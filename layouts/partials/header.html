@@ -1,0 +1,13 @@
+<header class="site-head">
+  <div class="wrap nav-row">
+    <a class="brand mono" href="/" aria-label="Home">CHOUKALOS<span class="brand-dim">//</span>HOMELAB</a>
+    <nav aria-label="Primary">
+      <ul class="nav mono">
+        <li><a href="/arcade/" class="{{ if eq .Section "arcade" }}active{{ end }}">ARCADE</a></li>
+        <li><a href="/lab/" class="{{ if eq .Section "lab" }}active{{ end }}">LAB</a></li>
+        <li><a href="/thoughts/" class="{{ if eq .Section "thoughts" }}active{{ end }}">THOUGHTS</a></li>
+        <li><a href="/files/">FILES</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>

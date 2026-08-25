@@ -151,7 +151,7 @@ homelab-blog/                      # public GitHub repo
 ├── layouts/
 │   ├── index.html                 # landing page (status/arcade/drop/thoughts modules)
 │   ├── _default/                  # baseof, single, list
-│   ├── arcade/index.html          # themed arcade cabinet listing
+│   ├── arcade/section.html        # themed arcade cabinet listing (Hugo 0.165: section index = section.html, not index.html)
 │   └── partials/                  # header, footer, nav, status
 ├── assets/
 │   ├── css/main.css               # tokens + theme (brick/neon)

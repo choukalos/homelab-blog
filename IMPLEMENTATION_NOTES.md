@@ -30,14 +30,32 @@ Running log of discovered assumptions, changes, test results, and rollback steps
 
 - `architecture.md` v0.2, `README.md`, `PLAN.md` (two-part plan), this file.
 - Hugo v0.165.0 installed to `~/bin/hugo` (prebuilt binary; no Homebrew).
-- Hugo site scaffolded: `hugo.toml`, `content/{thoughts,lab}`, `layouts/` (baseof/single/list/index + partials), `assets/{css,js}`, `static/arcade/` (7 games + `data/arcade/games.json`), `deploy.sh`, `scripts/new-thought.sh`.
+- Hugo site scaffolded: `hugo.toml`, `content/{thoughts,lab,arcade}`, `layouts/` (baseof/single/list + `arcade/section.html` + partials), `assets/{css,js}`, `static/arcade/` (7 games + `data/arcade/games.json`), `deploy.sh`, `scripts/new-thought.sh`.
 - Theme: cyberpunk/brick CSS tokens, brick cards, neon accents, scanline hero, `prefers-reduced-motion`, accessible focus/contrast; no external fonts/CDN.
 - Homepage modules: SYSTEM STATUS (placeholder-safe `status/status.json` fetch), ARCADE, LATEST DROP, RECENT THOUGHTS.
 - `/arcade/` index: data-driven cards from `games.json` (screenshot with CSS placeholder fallback, title, company, year, description).
 
+### Hugo 0.165 API gotchas (learned the hard way)
+
+Hugo 0.165 (2026-08) changed template APIs that older docs/tutorials get wrong:
+
+- **Section index layout is `layouts/<section>/section.html`** — `layouts/<section>/index.html` is silently ignored for section pages (falls back to `_default/list.html`). Home page is still `layouts/index.html`.
+- **Data files are read via `.Site.Data`** — `Page.GetJSON` is gone. `data/arcade/games.json` is reachable as `index (index (index .Site.Data "arcade") "games") "games"` (dir → filename → key). Range items are `interface{}`, so use `index . "field"`, not `.field`.
+- **`languageCode` config key deprecated** → use `locale`.
+- Standard sprig-ish functions like `keys`/`typeOf` are not available; `index`/`len`/`printf`/`dict`/`transform` are.
+
 ### Tests / validation
 
-- (pending) `hugo --minify --gc` build, `hugo server` smoke test of all routes, mobile/keyboard walkthrough.
+- `hugo --minify --gc` build: clean (0 warnings after `locale` fix).
+- `hugo server` smoke test — all routes pass:
+  - `/` (200) — all 4 modules render: SYSTEM STATUS (placeholder "status service offline"), ARCADE, LATEST DROP, RECENT THOUGHTS (lists the hello post).
+  - `/arcade/` (200) — 7 game cards, each with maker · year badge, description, PLAY link; screenshot `<img>` falls back to CSS placeholder via `onerror` (shots pending).
+  - `/arcade/<game>.html` × 7 (200) — self-contained games served from `static/`.
+  - `/thoughts/`, `/thoughts/hello-from-the-new-portal/`, `/lab/`, `/lab/one-page-arcade/` (200).
+  - Unknown path (404) — themed "SIGNAL LOST" page.
+  - `/status/status.json` (404 locally — expected; publisher is server-side in Part B) → status.js degrades to placeholder.
+  - `/files/` (404 locally — expected; served by Caddy from the drop zone on thor).
+- Not yet done: mobile/keyboard visual walkthrough, screenshot capture.
 
 ### Rollback
 

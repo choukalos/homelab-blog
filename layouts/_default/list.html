@@ -1,0 +1,18 @@
+{{ define "main" }}
+<header class="list-head">
+  <h1 class="mono">{{ .Title | upper }}</h1>
+  {{ with .Description }}<p class="list-sub">{{ . }}</p>{{ end }}
+</header>
+<div class="cards">
+  {{ range .Pages.ByDate.Reverse }}
+  <a class="card brick post-card" href="{{ .RelPermalink }}">
+    <div class="brick-studs" aria-hidden="true"></div>
+    <p class="meta mono">{{ .Date.Format "2006-01-02" }}</p>
+    <h2>{{ .Title }}</h2>
+    <p class="post-summary">{{ .Summary }}</p>
+  </a>
+  {{ else }}
+  <p class="status-note mono">nothing here yet</p>
+  {{ end }}
+</div>
+{{ end }}

@@ -1,0 +1,32 @@
+baseURL = "https://choukalos.com/"
+locale = "en"
+title = "CHOUKALOS // HOMELAB"
+enableRobotsTXT = true
+hasCJKLanguage = false
+
+[params]
+  description = "A personal homelab portal: arcade, lab projects, occasional thoughts, and a public file drop. Static, git-published, zero trackers."
+  # Client-side status endpoint (served by Caddy from the sanitized runtime dir;
+  # publisher is deferred — the UI degrades to a placeholder when missing/stale).
+  statusEndpoint = "status/status.json"
+  # Consider status stale after this many milliseconds.
+  statusStaleMs = 300000
+
+[permalinks]
+  thoughts = "/thoughts/:slug/"
+  lab = "/lab/:slug/"
+
+[outputs]
+  home = ["HTML", "RSS"]
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = false
+  [markup.highlight]
+    noClasses = false
+    codeFences = true
+
+[build]
+  [build.annotations]
+    multisegment = false

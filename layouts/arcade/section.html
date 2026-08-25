@@ -1,0 +1,31 @@
+{{ define "main" }}
+{{ $games := index .Site.Data "arcade" }}
+{{ $list := index (index $games "games") "games" }}
+<header class="list-head">
+  <h1 class="mono">ARCADE</h1>
+  <p class="list-sub mono">INSERT COIN — {{ len $list }} GAMES · SINGLE-FILE HTML · NO DOWNLOADS</p>
+</header>
+
+<div class="cards arcade-cards">
+  {{ range $list }}
+  <article class="card brick game-card">
+    <div class="brick-studs" aria-hidden="true"></div>
+    <div class="shot" role="img" aria-label="{{ index . "title" }} — screenshot placeholder">
+      <span class="shot-fallback mono" aria-hidden="true">{{ index (index . "title") 0 }}</span>
+      <img src="/arcade/shots/{{ index . "screenshot" }}" alt="{{ index . "title" }} in-game screenshot"
+           loading="lazy" onerror="this.remove()">
+    </div>
+    <div class="game-body">
+      <div class="game-top">
+        <h2>{{ index . "title" }}</h2>
+        <span class="badge mono">{{ index . "company" }} · {{ index . "year" }}</span>
+      </div>
+      <p class="game-desc">{{ index . "description" }}</p>
+      <a class="btn arcade-btn" href="/arcade/{{ index . "gameFile" }}">▶ PLAY</a>
+    </div>
+  </article>
+  {{ end }}
+</div>
+
+<p class="arcade-foot mono">games are self-contained HTML — view source and steal what you like</p>
+{{ end }}

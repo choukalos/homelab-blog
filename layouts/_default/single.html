@@ -1,0 +1,15 @@
+{{ define "main" }}
+<article class="post card brick">
+  <div class="brick-studs" aria-hidden="true"></div>
+  <header class="post-head">
+    <h1>{{ .Title }}</h1>
+    <p class="meta mono">
+      {{ .Date.Format "2006-01-02" }}
+      {{ with .Params.tags }} · {{ delimit . " · " }}{{ end }}
+    </p>
+  </header>
+  <div class="prose">
+    {{ .Content }}
+  </div>
+</article>
+{{ end }}

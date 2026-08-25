@@ -1,0 +1,62 @@
+{
+  "title": "One-Page Arcade",
+  "description": "Classic arcade games, playable in your browser.",
+  "games": [
+    {
+      "title": "Asteroids",
+      "company": "Atari",
+      "year": "1979",
+      "description": "One of the most influential arcade games ever made. Atari's spin-off from the successful Asteroid/Kilobot prototype established the vector graphics standard for arcade games. Players control a single spaceship in an asteroid field, destroying rocks that break into smaller pieces. It defined the space shooter genre and became a cultural icon of the early 1980s arcade scene.",
+      "gameFile": "asteroids.html",
+      "screenshot": "asteroids.png"
+    },
+    {
+      "title": "Galaga",
+      "company": "Namco",
+      "year": "1981",
+      "description": "Namco's masterpiece sequel to Galaxian introduced dive-bombing alien formations and a unique second-life mechanic. Players must defend against coordinated enemy attacks with three distinct alien types. Galaga's elaborate formation-based gameplay and increasing difficulty curve set the standard for fixed-shooters and remains one of the most beloved arcade classics.",
+      "gameFile": "galaga.html",
+      "screenshot": "galaga.png"
+    },
+    {
+      "title": "Depth Charge",
+      "company": "Atari",
+      "year": "1977",
+      "description": "Atari's deep-sea mining adventure puts you in control of a lone diver mining for diamonds on the ocean floor while fending off sharks, octopuses, and other sea creatures. The 4-player simultaneous gameplay made it a crowd favorite in arcades. Its unique premise combining resource collection with survival action influenced the underwater action genre for decades.",
+      "gameFile": "depth-charge.html",
+      "screenshot": "depth-charge.png"
+    },
+    {
+      "title": "Elite",
+      "company": "Firelight/Lucid Dreams",
+      "year": "1984",
+      "description": "The groundbreaking space trading and combat sim that pioneered the open-ended sandbox genre. Created by Ian Bell and David Braben, Elite let players explore a procedurally generated galaxy of 8 galaxies and 256 star systems, trading goods, bounty hunting, and engaging in 3D wireframe dogfights. It won over 50 computer game awards and is widely considered one of the most important games ever made.",
+      "gameFile": "elite.html",
+      "screenshot": "elite.png"
+    },
+    {
+      "title": "Missile Command",
+      "company": "Atari",
+      "year": "1980",
+      "description": "Atari's Cold War-themed defense game where players intercept incoming ICBMs with limited artillery. Designed by Dave Theurer, Missile Command's escalating difficulty and looming nuclear threat created unmatched tension for its era. Its game over screen became one of gaming's most haunting moments, and the game remains a powerful example of gaming as social commentary.",
+      "gameFile": "missile-command.html",
+      "screenshot": "missile-command.png"
+    },
+    {
+      "title": "Tetris",
+      "company": "Electronorgtechnika",
+      "year": "1984",
+      "description": "Created by Soviet programmer Alexey Pajitnov, Tetris is the best-selling puzzle game in history. Inspired by the pentomino puzzle game, its simple mechanics of rotating falling blocks create endlessly challenging gameplay. Born during the Cold War and famously smuggled out of the USSR, Tetris became a global phenomenon and is widely regarded as one of the greatest games ever created.",
+      "gameFile": "tetris.html",
+      "screenshot": "tetris.png"
+    },
+    {
+      "title": "Lunar Lander",
+      "company": "Atari",
+      "year": "1979",
+      "description": "Chris Saunders' physics-based landing simulator challenged players to use limited fuel to safely land a spacecraft on marked landing pads while avoiding craters and mountains. Originally released as a single-screen arcade game, its realistic physics and difficulty made it a cult favorite and inspired countless space-landing games and modern titles.",
+      "gameFile": "lunar-lander.html",
+      "screenshot": "lunar-lander.png"
+    }
+  ]
+}

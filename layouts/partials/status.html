@@ -1,0 +1,21 @@
+<section class="card brick status-tile" id="status-module"
+         data-endpoint="{{ site.Params.statusEndpoint }}"
+         data-stale-ms="{{ site.Params.statusStaleMs }}"
+         aria-label="System status">
+  <div class="brick-studs" aria-hidden="true"></div>
+  <header class="card-head">
+    <h2 class="mono">SYSTEM STATUS</h2>
+    <span class="card-tag mono" id="status-updated">—</span>
+  </header>
+  <!-- Server-rendered placeholder (no-JS safe). status.js replaces this block
+       with live tiles when status/status.json is present and fresh. -->
+  <div class="status-body" id="status-body">
+    <p class="status-note mono">status service offline — check back soon</p>
+    <ul class="status-tiles" aria-hidden="true">
+      <li class="status-cell unknown"><span class="dot" aria-hidden="true"></span><span class="name mono">AI LAB</span><span class="state mono">—</span></li>
+      <li class="status-cell unknown"><span class="dot" aria-hidden="true"></span><span class="name mono">MEDIA</span><span class="state mono">—</span></li>
+      <li class="status-cell unknown"><span class="dot" aria-hidden="true"></span><span class="name mono">AUTOMATION</span><span class="state mono">—</span></li>
+      <li class="status-cell unknown"><span class="dot" aria-hidden="true"></span><span class="name mono">PUBLIC FILES</span><span class="state mono">—</span></li>
+    </ul>
+  </div>
+</section>
