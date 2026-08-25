@@ -55,7 +55,7 @@ Hugo 0.165 (2026-08) changed template APIs that older docs/tutorials get wrong:
   - Unknown path (404) — themed "SIGNAL LOST" page.
   - `/status/status.json` (404 locally — expected; publisher is server-side in Part B) → status.js degrades to placeholder.
   - `/files/` (404 locally — expected; served by Caddy from the drop zone on thor).
-- Not yet done: mobile/keyboard visual walkthrough, screenshot capture.
+- Not yet done: mobile/keyboard visual walkthrough in a real browser.
 
 ### Rollback
 
@@ -63,8 +63,8 @@ Hugo 0.165 (2026-08) changed template APIs that older docs/tutorials get wrong:
 
 ### Open items
 
+- [x] Capture arcade screenshots (headless Chrome, 800×600) → `static/arcade/shots/` (all 7, committed).
 - [ ] Create public GitHub repo `homelab-blog` + first push (needs `gh auth login` or manual creation).
 - [ ] Confirm git identity.
-- [ ] Capture arcade screenshots (headless browser) → `static/arcade/shots/`.
-- [ ] 404 page + polish pass.
+- [ ] 404 page + polish pass (404 exists and is themed; polish = visual/mobile walkthrough).
 - [ ] Part B discovery + revision on thor (pi run).
