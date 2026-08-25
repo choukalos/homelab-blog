@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Depth Charge — 1977</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; background: #000;
+    display: flex; justify-content: center; align-items: center;
+    overflow: hidden; font-family: monospace;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+"use strict";
+
+// ═══ CONSTANTS ═══
+const GW = 320, GH = 256;
+const HUD_H = 20, INV_H = 20;
+const PTOP = HUD_H, PBOT = GH - INV_H;
+
+// Colors
+const C0 = '#000000';
+const C1 = '#2255AA';
+const C2 = '#3377CC';
+const C3 = '#5599DD';
+const CW = '#E0E0E0';
+const CX = '#FFFFFF';
+
+// Game settings
+const TOTAL_CHARGES = 45;  // total depth charges
+const MAX_LOADED = 6;      // max charges loaded at once
+const MAX_LIVES = 4;       // 4 hits = game over
+const RELOAD_RATE = 10 * 60; // frames between reloads (10s)
+const MAX_SUBS_ONSCREEN = 3;
+
+// Sub types: [basePoints, [minY, maxY], width, baseSpeed, weight]
+const SUB_TYPES = [
+  [10, [PTOP + 30,  PTOP + 70],  26, 0.3, 25],
+  [15, [PTOP + 40,  PTOP + 90],  28, 0.4, 22],
+  [20, [PTOP + 60,  PTOP + 120], 30, 0.5, 20],
+  [30, [PTOP + 80,  PTOP + 140], 32, 0.6, 14],
+  [40, [PTOP + 110, PTOP + 170], 34, 0.7, 10],
+  [60, [PTOP + 140, PTOP + 200], 36, 0.9, 8],
+];
+
+// ═══ CANVAS ═══
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = GW;
+canvas.height = GH;
+
+function resize() {
+  const s = Math.min(window.innerWidth / GW, window.innerHeight / GH, 4);
+  canvas.style.width = Math.floor(GW * s) + 'px';
+  canvas.style.height = Math.floor(GH * s) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══ AUDIO ═══
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function sfx(freq, dur, type, vol) {
+  try {
+    ensureAudio();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    g.gain.setValueAtTime(vol || 0.08, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g).connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function sfxDrop()      { sfx(800, 0.08, 'square', 0.06); }
+function sfxExplode()   { sfx(80, 0.3, 'sawtooth', 0.12); }
+function sfxTorpedo()   { sfx(1200, 0.15, 'sine', 0.04); }
+function sfxShipHit()   { sfx(200, 0.4, 'sawtooth', 0.15); }
+function sfxReload()    { sfx(600, 0.1, 'sine', 0.05); }
+function sfxScore()     { sfx(1200, 0.12, 'square', 0.05); sfx(1600, 0.08, 'sine', 0.04); }
+function sfxStart()     { sfx(440, 0.1, 'square', 0.06); setTimeout(()=>sfx(660, 0.1, 'square', 0.06), 100); setTimeout(()=>sfx(880, 0.2, 'square', 0.06), 200); }
+function sfxGameOver()  { sfx(400, 0.2, 'square', 0.08); setTimeout(()=>sfx(300, 0.3, 'square', 0.08), 200); setTimeout(()=>sfx(200, 0.5, 'square', 0.08), 400); }
+function sfxBoardClear() { sfx(523, 0.1, 'square', 0.06); setTimeout(()=>sfx(659, 0.1, 'square', 0.06), 100); setTimeout(()=>sfx(784, 0.2, 'square', 0.06), 200); }
+
+// ═══ STATE ═══
+let S;
+let keys = {};
+
+// Board progression: subs per board, speed multiplier, fire chance
+function boardConfig(board) {
+  const boardNum = board || 1;
+  // First board: 10 subs, slow, rare fire
+  // Later boards: scaling up to 80% of total charges
+  const maxSubs = Math.min(Math.floor(TOTAL_CHARGES * 0.8), 10 + (boardNum - 1) * 4);
+  const speedMult = 0.6 + (boardNum - 1) * 0.15; // 0.6x first, scaling up
+  const fireChance = 0.003 + (boardNum - 1) * 0.002; // rare at first, more often later
+  const fireCooldown = Math.max(120, 240 - (boardNum - 1) * 30);
+  const waveSize = Math.min(2 + Math.floor(boardNum / 3), 4); // 2-3 first, up to 4
+  const wavePause = Math.max(60, 180 - (boardNum - 1) * 20); // 3s first, down to 1s
+  const pointsMult = 1 + (boardNum - 1) * 0.3; // +30% per board
+  return { maxSubs, speedMult, fireChance, fireCooldown, waveSize, wavePause, pointsMult };
+}
+
+function reset() {
+  const cfg = boardConfig(1);
+  S = {
+    phase: 'title',
+    frame: 0,
+    board: 1,
+    score: 0,
+    highScore: (S && S.highScore) || 0,
+    lives: MAX_LIVES,
+    totalCharges: TOTAL_CHARGES,
+    loaded: MAX_LOADED,
+    chargesUsed: 0,
+    reloadTimer: 0,
+    subs: [],
+    sunkSubs: [], // sunk this board
+    waveActive: false,
+    waveSubsSpawned: 0,
+    waveSubsTotal: 0,
+    wavePauseTimer: 0,
+    subsRemaining: 0, // total subs left in this board
+    boardClearAnim: 0,
+    shipX: GW / 2,
+    shipHitAnim: 0,
+    charges: [],
+    torps: [],
+    exps: [],
+    blinkTimer: 0,
+    goTimer: 0,
+  };
+  startBoard();
+}
+
+function startBoard() {
+  const cfg = boardConfig(S.board);
+  S.subsRemaining = cfg.maxSubs;
+  S.sunkSubs = [];
+  S.waveActive = true;
+  S.waveSubsSpawned = 0;
+  S.waveSubsTotal = cfg.waveSize;
+  S.wavePauseTimer = 0;
+  // Load initial charges
+  S.loaded = Math.min(MAX_LOADED, S.totalCharges);
+  S.reloadTimer = 0;
+  // Spawn first wave
+  for (let i = 0; i < cfg.waveSize; i++) {
+    setTimeout(() => spawnSub(), i * 300);
+  }
+}
+
+// ═══ INPUT ═══
+function handleAction() {
+  ensureAudio();
+  if (S.phase === 'title') {
+    sfxStart();
+    reset();
+    S.phase = 'playing';
+    return;
+  }
+  if (S.phase === 'gameover' && S.goTimer > 60) {
+    sfxStart();
+    reset();
+    S.phase = 'playing';
+    return;
+  }
+  if (S.phase === 'playing' && S.loaded > 0 && S.totalCharges > 0) {
+    dropCharge();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'KeyZ' || e.code === 'Enter') {
+    e.preventDefault();
+    handleAction();
+    return;
+  }
+  keys[e.code] = true;
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+canvas.addEventListener('click', handleAction);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); handleAction(); }, { passive: false });
+
+// ═══ GAME OBJECTS ═══
+function spawnSub() {
+  const cfg = boardConfig(S.board);
+  if (S.subsRemaining <= 0) return;
+  if (S.subs.length >= MAX_SUBS_ONSCREEN) return;
+  
+  const totalW = SUB_TYPES.reduce((s, t) => s + t[4], 0);
+  let r = Math.random() * totalW, typeIdx = 0;
+  for (let i = 0; i < SUB_TYPES.length; i++) {
+    r -= SUB_TYPES[i][4];
+    if (r <= 0) { typeIdx = i; break; }
+  }
+  const t = SUB_TYPES[typeIdx];
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const y = t[1][0] + Math.random() * (t[1][1] - t[1][0]);
+  
+  S.subs.push({
+    x: dir === 1 ? -t[2] : GW + t[2],
+    y: y,
+    w: t[2], h: 10,
+    val: Math.floor(t[0] * cfg.pointsMult),
+    spd: t[3] * cfg.speedMult * dir,
+    fireCd: cfg.fireCooldown + Math.floor(Math.random() * 120),
+    firing: false,
+    fAnim: 0,
+  });
+  S.subsRemaining--;
+  S.waveSubsSpawned++;
+}
+
+function dropCharge() {
+  S.loaded--;
+  S.totalCharges--;
+  S.chargesUsed++;
+  sfxDrop();
+  S.charges.push({
+    x: S.shipX,
+    y: PTOP + 2,
+    age: 0,
+    pivotX: S.shipX,
+    alive: true,
+  });
+}
+
+function updateCharge(ch) {
+  ch.y += 0.6;
+  ch.age++;
+  ch.x = ch.pivotX + Math.sin(ch.age * 0.08) * 30;
+  if (ch.y > PBOT) ch.alive = false;
+}
+
+function fireTorpedo(sub) {
+  const cfg = boardConfig(S.board);
+  sfxTorpedo();
+  const dx = S.shipX - sub.x, dy = PTOP - sub.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return;
+  sub.firing = true;
+  sub.fAnim = 12;
+  S.torps.push({
+    x: sub.x, y: sub.y,
+    vx: (dx / dist) * 1.5, vy: (dy / dist) * 1.5,
+    alive: true, flash: 0,
+  });
+}
+
+function updateTorp(t) {
+  t.x += t.vx; t.y += t.vy; t.flash++;
+  if (t.y <= PTOP + 6 && Math.abs(t.x - S.shipX) < 16) {
+    t.alive = false;
+    shipHit();
+  }
+  if (t.x < -20 || t.x > GW + 20 || t.y < -20 || t.y > GH + 20) t.alive = false;
+}
+
+function shipHit() {
+  S.shipHitAnim = 20;
+  sfxShipHit();
+  S.lives--;
+  if (S.lives <= 0) {
+    sfxGameOver();
+    S.phase = 'gameover';
+    if (S.score > S.highScore) S.highScore = S.score;
+    S.goTimer = 0;
+  }
+}
+
+function addExplosion(x, y, type) {
+  S.exps.push({ x, y, type, frame: 0, max: type === 'sub' ? 20 : 24 });
+}
+
+function checkCollisions() {
+  for (const ch of S.charges) {
+    if (!ch.alive) continue;
+    for (let i = S.subs.length - 1; i >= 0; i--) {
+      const sub = S.subs[i];
+      if (Math.abs(ch.x - (sub.x + sub.w / 2)) < sub.w / 2 + 3 &&
+          Math.abs(ch.y - (sub.y + sub.h / 2)) < sub.h / 2 + 3) {
+        ch.alive = false;
+        S.score += sub.val;
+        sfxExplode();
+        sfxScore();
+        addExplosion(sub.x + sub.w / 2, sub.y + sub.h / 2, 'sub');
+        S.sunkSubs.push(sub.val);
+        S.subs.splice(i, 1);
+        break;
+      }
+    }
+  }
+  S.charges = S.charges.filter(c => c.alive);
+}
+
+// ═══ UPDATE ═══
+function update() {
+  S.frame++;
+  S.blinkTimer++;
+
+  if (S.phase === 'title' || S.phase === 'gameover') {
+    if (S.phase === 'gameover') S.goTimer++;
+    return;
+  }
+
+  // Ship movement
+  if (keys['ArrowLeft'] || keys['KeyA']) S.shipX = Math.max(20, S.shipX - 2);
+  if (keys['ArrowRight'] || keys['KeyD']) S.shipX = Math.min(GW - 20, S.shipX + 2);
+
+  // Reload charges over time
+  S.reloadTimer++;
+  if (S.reloadTimer >= RELOAD_RATE && S.loaded < MAX_LOADED && S.totalCharges > 0) {
+    S.reloadTimer = 0;
+    S.loaded++;
+    sfxReload();
+  }
+
+  // Wave management
+  const cfg = boardConfig(S.board);
+  if (S.waveActive) {
+    // Check if wave is complete
+    if (S.waveSubsSpawned >= S.waveSubsTotal && S.subs.length === 0) {
+      S.waveActive = false;
+      S.wavePauseTimer = cfg.wavePause;
+    }
+  } else {
+    // Wave pause countdown
+    S.wavePauseTimer--;
+    if (S.wavePauseTimer <= 0 && S.subsRemaining > 0) {
+      // Start next wave
+      S.waveActive = true;
+      S.waveSubsSpawned = 0;
+      S.waveSubsTotal = Math.min(cfg.waveSize, S.subsRemaining);
+      for (let i = 0; i < S.waveSubsTotal; i++) {
+        spawnSub();
+      }
+    }
+  }
+
+  // Update subs
+  for (let i = S.subs.length - 1; i >= 0; i--) {
+    const sub = S.subs[i];
+    sub.x += sub.spd;
+    if (sub.x < -sub.w - 20 || sub.x > GW + sub.w + 20) {
+      S.subs.splice(i, 1);
+      S.subsRemaining--; // escaped sub counts against remaining
+      continue;
+    }
+    sub.fireCd--;
+    if (sub.fireCd <= 0 && !sub.firing) {
+      if (Math.random() < cfg.fireChance * 60) fireTorpedo(sub);
+      sub.fireCd = cfg.fireCooldown + Math.floor(Math.random() * 120);
+    }
+    if (sub.firing) {
+      sub.fAnim--;
+      if (sub.fAnim <= 0) sub.firing = false;
+    }
+  }
+
+  // Update charges
+  for (const ch of S.charges) updateCharge(ch);
+  S.charges = S.charges.filter(c => c.alive);
+
+  // Update torps
+  for (const t of S.torps) updateTorp(t);
+  S.torps = S.torps.filter(t => t.alive);
+
+  // Update explosions
+  for (const e of S.exps) e.frame++;
+  S.exps = S.exps.filter(e => e.frame < e.max);
+
+  // Collisions
+  checkCollisions();
+
+  // Ship hit anim
+  if (S.shipHitAnim > 0) S.shipHitAnim--;
+
+  // Board clear check
+  if (S.subsRemaining <= 0 && S.subs.length === 0 && S.wavePauseTimer <= 0) {
+    if (S.boardClearAnim === 0) {
+      sfxBoardClear();
+    }
+    S.boardClearAnim++;
+    if (S.boardClearAnim > 90) {
+      // Next board
+      S.board++;
+      S.boardClearAnim = 0;
+      startBoard();
+    }
+  }
+
+  // Game over: out of charges and subs still active
+  if (S.totalCharges <= 0 && S.loaded <= 0 && S.charges.length === 0) {
+    if (S.subsRemaining > 0 || S.subs.length > 0) {
+      if (S.phase !== 'gameover') {
+        sfxGameOver();
+        S.phase = 'gameover';
+        if (S.score > S.highScore) S.highScore = S.score;
+        S.goTimer = 0;
+      }
+    }
+  }
+
+  // High score
+  if (S.score > S.highScore) S.highScore = S.score;
+}
+
+// ═══ DRAW ═══
+function draw() {
+  ctx.fillStyle = C0;
+  ctx.fillRect(0, 0, GW, GH);
+
+  if (S.phase === 'title') { drawTitle(); return; }
+  if (S.phase === 'gameover') { drawGameOver(); return; }
+
+  // HUD background
+  ctx.fillStyle = C1;
+  ctx.fillRect(0, 0, GW, HUD_H);
+
+  // Lives (top left)
+  ctx.fillStyle = CW;
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  let livesStr = '';
+  for (let i = 0; i < MAX_LIVES; i++) livesStr += i < S.lives ? '\u2605' : '\u2606';
+  ctx.fillText(livesStr, 4, 10);
+
+  // Board (top center)
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText('BOARD ' + S.board, GW / 2, 10);
+
+  // Score (top right)
+  ctx.textAlign = 'right';
+  ctx.font = '10px monospace';
+  ctx.fillText('SCORE ' + S.score, GW - 4, 10);
+
+  // Ship
+  drawShip();
+
+  // Water line
+  ctx.fillStyle = C1;
+  ctx.fillRect(0, PTOP, GW, 1);
+
+  // Subs
+  for (const sub of S.subs) drawSub(sub);
+
+  // Charges
+  for (const ch of S.charges) drawCharge(ch);
+
+  // Torps
+  for (const t of S.torps) drawTorp(t);
+
+  // Explosions
+  drawExplosions();
+
+  // Inventory bar
+  ctx.fillStyle = C1;
+  ctx.fillRect(0, PBOT, GW, INV_H);
+
+  // Sunk subs (lower left)
+  drawSunkSubs();
+
+  // Charges remaining (lower right)
+  ctx.fillStyle = CW;
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('CHARGES ' + S.totalCharges, GW - 4, PBOT + 10);
+
+  // Loaded indicator (lower center)
+  let loadedStr = '';
+  for (let i = 0; i < MAX_LOADED; i++) loadedStr += i < S.loaded ? '\u2022' : '\u00B7';
+  ctx.textAlign = 'center';
+  ctx.font = '10px monospace';
+  ctx.fillText(loadedStr, GW / 2, PBOT + 10);
+
+  // Board clear announcement
+  if (S.boardClearAnim > 0) {
+    const blink = Math.floor(S.frame / 15) % 2;
+    if (blink) {
+      ctx.fillStyle = CX;
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('BOARD CLEARED!', GW / 2, GH / 2);
+    }
+  }
+}
+
+function drawShip() {
+  const sx = Math.floor(S.shipX);
+  const sy = PTOP;
+  const flash = S.shipHitAnim > 0 && Math.random() > 0.3;
+  ctx.fillStyle = flash ? CX : C0;
+  ctx.fillRect(sx - 15, sy - 2, 30, 3);
+  ctx.fillRect(sx - 12, sy + 1, 24, 5);
+  ctx.fillRect(sx - 10, sy + 6, 20, 3);
+  ctx.fillRect(sx - 15, sy + 2, 3, 3);
+  ctx.fillRect(sx + 12, sy + 2, 3, 3);
+  ctx.fillRect(sx - 4, sy - 4, 8, 5);
+  ctx.fillRect(sx - 1, sy - 10, 2, 6);
+  ctx.fillRect(sx - 4, sy - 10, 8, 1);
+  ctx.fillStyle = C1;
+  ctx.fillRect(sx - 2, sy - 3, 1, 1);
+  ctx.fillRect(sx + 1, sy - 3, 1, 1);
+}
+
+function drawSub(sub) {
+  const { x, y, w, h, val, firing, fAnim } = sub;
+  ctx.fillStyle = C1;
+  ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+  ctx.fillStyle = C0;
+  ctx.beginPath();
+  ctx.moveTo(Math.floor(x), Math.floor(y));
+  ctx.lineTo(Math.floor(x - 3), Math.floor(y + h / 2));
+  ctx.lineTo(Math.floor(x), Math.floor(y + h));
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(Math.floor(x + w), Math.floor(y));
+  ctx.lineTo(Math.floor(x + w + 3), Math.floor(y + h / 2));
+  ctx.lineTo(Math.floor(x + w), Math.floor(y + h));
+  ctx.fill();
+  const tw = 5, th = 5;
+  ctx.fillStyle = C1;
+  ctx.fillRect(Math.floor(x + w / 2 - tw / 2), Math.floor(y - th), tw, th);
+  ctx.fillStyle = CW;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(val, Math.floor(x + w / 2), Math.floor(y + h / 2 + 1));
+  if (firing && fAnim > 0) {
+    const f = Math.floor(fAnim / 3) % 2;
+    if (f) {
+      ctx.fillStyle = CX;
+      const dir = sub.spd > 0 ? 1 : -1;
+      for (let i = 0; i < 3; i++) {
+        const sx = dir === 1 ? x + w + i : x - i;
+        ctx.fillRect(Math.floor(sx), Math.floor(y + h / 2 - 1), 1, 1);
+      }
+    }
+  }
+}
+
+function drawCharge(ch) {
+  ctx.fillStyle = C3;
+  ctx.fillRect(Math.floor(ch.x) - 1, Math.floor(ch.y) - 1, 3, 3);
+  const prevX = ch.pivotX + Math.sin((ch.age - 2) * 0.08) * 30;
+  const prevY = ch.y - 0.6 * 2;
+  ctx.fillStyle = C2;
+  ctx.fillRect(Math.floor(prevX), Math.floor(prevY), 1, 1);
+}
+
+function drawTorp(t) {
+  if (t.flash % 3 < 2) {
+    ctx.fillStyle = CX;
+    ctx.fillRect(Math.floor(t.x) - 1, Math.floor(t.y) - 1, 2, 2);
+  }
+  ctx.fillStyle = C2;
+  ctx.fillRect(Math.floor(t.x - t.vx), Math.floor(t.y - t.vy), 1, 1);
+}
+
+function drawExplosions() {
+  for (const e of S.exps) {
+    const p = e.frame / e.max;
+    if (e.type === 'sub') {
+      const n = 8 + Math.floor(p * 4);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + e.frame * 0.2;
+        const r = (1 - p) * 12 + p * 20;
+        const px = e.x + Math.cos(a) * r;
+        const py = e.y + Math.sin(a) * r;
+        const sz = e.frame < 6 ? 2 : 1;
+        ctx.fillStyle = e.frame < 4 ? CX : (Math.random() > 0.3 ? CX : C3);
+        ctx.fillRect(Math.floor(px), Math.floor(py), sz, sz);
+      }
+      if (e.frame < 8) {
+        ctx.fillStyle = CX;
+        ctx.fillRect(Math.floor(e.x) - 2, Math.floor(e.y) - 2, 4, 4);
+      }
+    }
+  }
+}
+
+function drawSunkSubs() {
+  // Draw sunk subs as small icons in the lower left
+  ctx.textAlign = 'left';
+  ctx.font = '8px monospace';
+  ctx.textBaseline = 'middle';
+  let x = 4, y = PBOT + 10;
+  for (let i = 0; i < S.sunkSubs.length && i < 8; i++) {
+    ctx.fillStyle = C3;
+    ctx.fillRect(x, y - 3, 8, 6);
+    ctx.fillStyle = CW;
+    ctx.fillText(S.sunkSubs[i], x + 4, y);
+    x += 14;
+    if (x > GW / 2 - 20) {
+      x = 4;
+      y += 8;
+    }
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = C1;
+  ctx.fillRect(0, 0, GW, GH);
+  ctx.fillStyle = C0;
+  ctx.font = 'bold 22px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('DEPTH CHARGE', GW / 2, 50);
+  // Ship
+  ctx.fillRect(GW/2 - 12, 86, 24, 5);
+  ctx.fillRect(GW/2 - 10, 91, 20, 3);
+  ctx.fillRect(GW/2 - 15, 87, 3, 3);
+  ctx.fillRect(GW/2 + 12, 87, 3, 3);
+  ctx.fillRect(GW/2 - 4, 79, 8, 5);
+  ctx.fillRect(GW/2 - 1, 73, 2, 6);
+  ctx.fillRect(GW/2 - 4, 73, 8, 1);
+  // Demo subs
+  const demoSubs = [[40, 120, 26], [100, 145, 30], [200, 135, 28]];
+  for (const [sx, sy, sw] of demoSubs) {
+    ctx.fillRect(sx - sw / 2, sy, sw, 8);
+    ctx.fillRect(sx - 2, sy - 4, 4, 4);
+  }
+  ctx.fillStyle = CW;
+  ctx.font = '9px monospace';
+  ctx.fillText('ARROWS: MOVE  SPACE/Z/TAP: DROP CHARGE', GW / 2, 180);
+  ctx.fillText('45 CHARGES  SINK SUBS TO ADVANCE', GW / 2, 195);
+  const blink = Math.floor(S.blinkTimer / 20) % 2;
+  if (blink) {
+    ctx.fillStyle = C0;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('PRESS SPACE TO START', GW / 2, 220);
+  }
+  ctx.fillStyle = C0;
+  ctx.font = '7px monospace';
+  ctx.fillText('\u00A9 1977 Nostromo Electronic Games', GW / 2, 240);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = C1;
+  ctx.fillRect(0, 0, GW, GH);
+  ctx.fillStyle = C0;
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', GW / 2, 60);
+  ctx.fillStyle = CW;
+  ctx.font = '14px monospace';
+  ctx.fillText('SCORE: ' + S.score, GW / 2, 100);
+  ctx.font = '10px monospace';
+  ctx.fillText('BOARD ' + S.board, GW / 2, 120);
+  if (S.score >= S.highScore && S.score > 0) {
+    ctx.fillStyle = C0;
+    ctx.font = 'bold 10px monospace';
+    ctx.fillText('\u2605 NEW HIGH SCORE \u2605', GW / 2, 140);
+  } else {
+    ctx.fillStyle = C0;
+    ctx.font = '10px monospace';
+    ctx.fillText('HIGH SCORE: ' + S.highScore, GW / 2, 140);
+  }
+  const blink = Math.floor(S.blinkTimer / 20) % 2;
+  if (blink && S.goTimer > 60) {
+    ctx.fillStyle = CW;
+    ctx.font = 'bold 10px monospace';
+    ctx.fillText('PRESS SPACE TO PLAY AGAIN', GW / 2, 170);
+  }
+  ctx.fillStyle = C0;
+  ctx.font = '7px monospace';
+  ctx.fillText('\u00A9 1977 Nostromo Electronic Games', GW / 2, 230);
+}
+
+// ═══ LOOP ═══
+let lastTime = 0;
+let accum = 0;
+
+function loop(ts) {
+  const dt = ts - lastTime;
+  lastTime = ts;
+  accum += dt;
+  while (accum >= 1000 / 60) {
+    update();
+    accum -= 1000 / 60;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+reset();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
