@@ -10,8 +10,11 @@
 
   <section class="card brick big-tile arcade-tile" aria-label="Arcade">
     <div class="brick-studs" aria-hidden="true"></div>
-    <div class="tile-body">
+    <header class="card-head">
       <h2 class="mono">ARCADE</h2>
+      <span class="card-tag mono">{{ len (index (index (index .Site.Data "arcade") "games") "games") }} GAMES</span>
+    </header>
+    <div class="tile-body">
       <p class="tile-copy">Classic one-page games — canvas, procedural audio, zero dependencies. Insert coin.</p>
       <a class="btn arcade-btn" href="/arcade/">▶ PLAY</a>
     </div>
@@ -19,8 +22,11 @@
 
   <section class="card brick big-tile drop-tile" aria-label="Latest drop">
     <div class="brick-studs" aria-hidden="true"></div>
-    <div class="tile-body">
+    <header class="card-head">
       <h2 class="mono">LATEST DROP</h2>
+      <span class="card-tag mono">/files/</span>
+    </header>
+    <div class="tile-body">
       <p class="tile-copy">AI-generated artifacts and shared media, live the moment they land — no rebuild required.</p>
       <a class="btn" href="/files/">BROWSE /files/ →</a>
     </div>
