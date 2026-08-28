@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELITE - Space Trader</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+canvas { display: block; }
+#hud {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 10;
+}
+#hud-top {
+  position: absolute; top: 12px; left: 16px; right: 16px;
+  display: flex; justify-content: space-between;
+  color: #0f0; font-size: 14px; text-shadow: 0 0 6px #0f0;
+}
+.hud-box {
+  background: rgba(0,40,0,0.4); border: 1px solid #0a0;
+  padding: 6px 14px; min-width: 160px;
+}
+.hud-label { color: #0a0; font-size: 10px; letter-spacing: 2px; }
+.hud-value { font-size: 18px; font-weight: bold; color: #0f0; margin-top: 2px; }
+#crosshair {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px; height: 30px;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(0,255,0,0.5);
+}
+#crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+#crosshair::after { height: 2px; width: 100%; top: 50%; transform: translateY(-50%); }
+#crosshair-dots {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px; height: 2px; background: #0f0;
+  box-shadow: 0 0 4px #0f0;
+}
+#win-overlay {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.85); z-index: 100;
+  justify-content: center; align-items: center; flex-direction: column;
+}
+#win-overlay.show { display: flex; }
+#win-overlay h1 {
+  color: #0f0; font-size: 36px; text-shadow: 0 0 20px #0f0;
+  letter-spacing: 4px; text-align: center;
+}
+#win-overlay p { color: #0a0; font-size: 16px; margin-top: 12px; }
+#minimap {
+  position: fixed; bottom: 12px; right: 12px;
+  width: 140px; height: 140px;
+  background: rgba(0,20,0,0.5); border: 1px solid #0a0;
+  border-radius: 50%; overflow: hidden;
+}
+#minimap-canvas { width: 100%; height: 100%; }
+#controls-hint {
+  position: fixed; bottom: 12px; left: 12px;
+  color: #060; font-size: 10px; text-shadow: 0 0 4px #0a0;
+  line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="hud-top">
+    <div class="hud-box">
+      <div class="hud-label">SPEED</div>
+      <div class="hud-value" id="speed-val">0</div>
+    </div>
+    <div class="hud-box" style="text-align:center;">
+      <div class="hud-label">SCORE</div>
+      <div class="hud-value" id="score-val">0</div>
+    </div>
+    <div class="hud-box" style="text-align:right;">
+      <div class="hud-label">DISTANCE</div>
+      <div class="hud-value" id="dist-val">---</div>
+    </div>
+  </div>
+  <div id="crosshair"><div id="crosshair-dots"></div></div>
+</div>
+
+<div id="win-overlay">
+  <h1>DOCKING SUCCESSFUL</h1>
+  <h1 style="font-size:48px;">YOU WIN!</h1>
+  <p id="final-score"></p>
+</div>
+
+<div id="minimap">
+  <canvas id="minimap-canvas" width="140" height="140"></canvas>
+</div>
+
+<div id="controls-hint">
+  W/S &mdash; PITCH<br>
+  A/D &mdash; ROLL<br>
+  ARROWS &mdash; YAW/PITCH<br>
+  SHIFT &mdash; THRUST<br>
+  CTRL &mdash; BRAKE<br>
+  SPACE &mdash; FIRE
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/160.0.0/three.min.js"></script>
+<script>
+(function() {
+  // ─── GAME STATE ─────────────────────────────────────────────
+  let score = 0;
+  let gameWon = false;
+  let gameTime = 0;
+
+  // ─── THREE.JS SETUP ─────────────────────────────────────────
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000000, 0.0008);
+
+  const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.5, 5000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = false;
+  document.body.appendChild(renderer.domElement);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0x222244, 0.6);
+  scene.add(ambientLight);
+
+  const sunLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+  sunLight.position.set(100, 100, 50);
+  scene.add(sunLight);
+
+  const hemiLight = new THREE.HemisphereLight(0x444466, 0x222211, 0.4);
+  scene.add(hemiLight);
+
+  // ─── STAR FIELD ─────────────────────────────────────────────
+  const starCount = 1500;
+  const starGeo = new THREE.BufferGeometry();
+  const starPositions = new Float32Array(starCount * 3);
+  const starColors = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i++) {
+    const i3 = i * 3;
+    const radius = 500 + Math.random() * 2000;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    starPositions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+    starPositions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+    starPositions[i3 + 2] = radius * Math.cos(phi);
+    const b = 0.4 + Math.random() * 0.6;
+    starColors[i3] = b;
+    starColors[i3 + 1] = b;
+    starColors[i3 + 2] = b + Math.random() * 0.2;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+  const starMat = new THREE.PointsMaterial({ size: 2, vertexColors: true, sizeAttenuation: true });
+  const stars = new THREE.Points(starGeo, starMat);
+  scene.add(stars);
+
+  // ─── PLAYER SHIP ────────────────────────────────────────────
+  const playerGroup = new THREE.Group();
+
+  function createPlayerShip() {
+    const materials = {
+      body: new THREE.MeshPhongMaterial({ color: 0x8899aa, flatShading: true }),
+      wing: new THREE.MeshPhongMaterial({ color: 0x556677, flatShading: true }),
+      cockpit: new THREE.MeshPhongMaterial({ color: 0x44ccff, flatShading: true, transparent: true, opacity: 0.7 }),
+      engine: new THREE.MeshPhongMaterial({ color: 0xff6622, flatShading: true, emissive: 0x441100 }),
+      accent: new THREE.MeshPhongMaterial({ color: 0xff4444, flatShading: true }),
+    };
+
+    // Main fuselage - elongated wedge
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 5), materials.body);
+    fuselage.position.z = -0.5;
+    playerGroup.add(fuselage);
+
+    // Nose cone
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.5, 4), materials.body);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.z = 2.5;
+    playerGroup.add(nose);
+
+    // Cockpit
+    const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 1.5), materials.cockpit);
+    cockpit.position.set(0, 0.6, -0.2);
+    playerGroup.add(cockpit);
+
+    // Main wings - angled
+    const wingGeo = new THREE.BoxGeometry(7, 0.15, 2.5);
+    const wings = new THREE.Mesh(wingGeo, materials.wing);
+    wings.position.set(0, -0.2, -1);
+    wings.rotation.z = 0.05;
+    playerGroup.add(wings);
+
+    // Wing tips - pointing up
+    const tipGeo = new THREE.BoxGeometry(0.4, 1.5, 0.4);
+    const tipL = new THREE.Mesh(tipGeo, materials.wing);
+    tipL.position.set(-3.2, 0.4, -1.5);
+    playerGroup.add(tipL);
+    const tipR = new THREE.Mesh(tipGeo, materials.wing);
+    tipR.position.set(3.2, 0.4, -1.5);
+    playerGroup.add(tipR);
+
+    // Red wing tip markers
+    const markerGeo = new THREE.BoxGeometry(0.5, 0.3, 0.3);
+    const markerL = new THREE.Mesh(markerGeo, materials.accent);
+    markerL.position.set(-3.2, 1.2, -1.5);
+    playerGroup.add(markerL);
+    const markerR = new THREE.Mesh(markerGeo, materials.accent);
+    markerR.position.set(3.2, 1.2, -1.5);
+    playerGroup.add(markerR);
+
+    // Engine blocks
+    const engGeo = new THREE.BoxGeometry(0.6, 0.5, 1.5);
+    const engL = new THREE.Mesh(engGeo, materials.engine);
+    engL.position.set(-1.2, -0.5, -2.8);
+    playerGroup.add(engL);
+    const engR = new THREE.Mesh(engGeo, materials.engine);
+    engR.position.set(1.2, -0.5, -2.8);
+    playerGroup.add(engR);
+
+    // Engine exhaust glow
+    const exhGeo = new THREE.BoxGeometry(0.4, 0.3, 0.8);
+    const exhMat = new THREE.MeshPhongMaterial({ color: 0xffaa00, emissive: 0xff6600, flatShading: true, transparent: true, opacity: 0.8 });
+    const exhL = new THREE.Mesh(exhGeo, exhMat);
+    exhL.position.set(-1.2, -0.5, -3.7);
+    exhL.name = 'engineExhaust';
+    playerGroup.add(exhL);
+    const exhR = new THREE.Mesh(exhGeo, exhMat);
+    exhR.position.set(1.2, -0.5, -3.7);
+    exhR.name = 'engineExhaust';
+    playerGroup.add(exhR);
+
+    // Vertical stabilizer
+    const stabGeo = new THREE.BoxGeometry(0.2, 1.8, 1.2);
+    const stab = new THREE.Mesh(stabGeo, materials.wing);
+    stab.position.set(0, 0.9, -2.5);
+    stab.rotation.x = -0.15;
+    playerGroup.add(stab);
+
+    // Red dorsal accent
+    const dorsalGeo = new THREE.BoxGeometry(0.8, 0.1, 2);
+    const dorsal = new THREE.Mesh(dorsalGeo, materials.accent);
+    dorsal.position.set(0, 0.5, -1.5);
+    playerGroup.add(dorsal);
+
+    return playerGroup;
+  }
+
+  createPlayerShip();
+  playerGroup.position.set(0, 0, 0);
+  scene.add(playerGroup);
+
+  // Player physics
+  const playerVel = new THREE.Vector3(0, 0, 0);
+  const playerEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const playerRotSpeed = 1.8;
+  const playerThrust = 40;
+  const playerBrake = 30;
+  const playerMaxSpeed = 80;
+  const playerDrag = 0.98;
+
+  // ─── INPUT HANDLING ─────────────────────────────────────────
+  const keys = {};
+  document.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  // ─── LASERS ─────────────────────────────────────────────────
+  const lasers = [];
+  const laserGeo = new THREE.BoxGeometry(0.15, 0.15, 2);
+  const laserMat = new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, flatShading: true });
+
+  let lastShotTime = 0;
+  const shotCooldown = 120; // ms
+
+  function fireLaser() {
+    const now = performance.now();
+    if (now - lastShotTime < shotCooldown) return;
+    lastShotTime = now;
+
+    const laser = new THREE.Mesh(laserGeo, laserMat);
+    const worldPos = new THREE.Vector3();
+    playerGroup.getWorldPosition(worldPos);
+
+    const dir = new THREE.Vector3(0, 0, 1);
+    dir.applyQuaternion(playerGroup.quaternion);
+
+    laser.position.copy(worldPos).add(dir.clone().multiplyScalar(3));
+    laser.quaternion.copy(playerGroup.quaternion);
+    laser.userData.velocity = dir.clone().multiplyScalar(150);
+    laser.userData.life = 2.0;
+    scene.add(laser);
+    lasers.push(laser);
+  }
+
+  // ─── ENEMIES ────────────────────────────────────────────────
+  const enemies = [];
+  const enemyGroupContainer = new THREE.Group();
+  scene.add(enemyGroupContainer);
+
+  function createEnemyShip() {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshPhongMaterial({ color: 0xcc4444, flatShading: true });
+    const mat2 = new THREE.MeshPhongMaterial({ color: 0x662222, flatShading: true });
+    const mat3 = new THREE.MeshPhongMaterial({ color: 0xffaa00, flatShading: true, emissive: 0x331100 });
+
+    // Angular body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 4), mat);
+    group.add(body);
+
+    // Angular nose
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2, 4), mat);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.z = 2.5;
+    group.add(nose);
+
+    // Blocky wings
+    const wingL = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 2), mat2);
+    wingL.position.set(-2, -0.3, -0.5);
+    group.add(wingL);
+    const wingR = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 2), mat2);
+    wingR.position.set(2, -0.3, -0.5);
+    group.add(wingR);
+
+    // Engine
+    const eng = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 1), mat3);
+    eng.position.set(0, -0.5, -2.5);
+    group.add(eng);
+
+    // Red lights
+    const lightGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const lightMat = new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, flatShading: true });
+    const lL = new THREE.Mesh(lightGeo, lightMat);
+    lL.position.set(-2.5, -0.2, -1);
+    group.add(lL);
+    const lR = new THREE.Mesh(lightGeo, lightMat);
+    lR.position.set(2.5, -0.2, -1);
+    group.add(lR);
+
+    // Collision box
+    group.userData.radius = 3.5;
+    group.userData.hp = 1;
+
+    return group;
+  }
+
+  function spawnEnemy() {
+    const enemy = createEnemyShip();
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 200 + Math.random() * 300;
+    enemy.position.set(
+      playerGroup.position.x + Math.cos(angle) * dist,
+      (Math.random() - 0.5) * 100,
+      playerGroup.position.z + Math.sin(angle) * dist
+    );
+    enemy.userData.velocity = new THREE.Vector3();
+    enemyGroupContainer.add(enemy);
+    enemies.push(enemy);
+  }
+
+  // Initial spawn
+  for (let i = 0; i < 8; i++) {
+    spawnEnemy();
+  }
+
+  // ─── EXPLOSION PARTICLES ────────────────────────────────────
+  const explosions = [];
+
+  function createExplosion(position) {
+    const count = 20;
+    const group = new THREE.Group();
+    group.position.copy(position);
+
+    for (let i = 0; i < count; i++) {
+      const size = 0.3 + Math.random() * 0.8;
+      const geo = new THREE.BoxGeometry(size, size, size);
+      const colors = [0xff4444, 0xff8800, 0xffcc00, 0xff0000, 0x884400];
+      const mat = new THREE.MeshPhongMaterial({
+        color: colors[Math.floor(Math.random() * colors.length)],
+        flatShading: true, emissive: 0x441100
+      });
+      const part = new THREE.Mesh(geo, mat);
+      const dir = new THREE.Vector3(
+        (Math.random() - 0.5),
+        (Math.random() - 0.5),
+        (Math.random() - 0.5)
+      ).normalize().multiplyScalar(15 + Math.random() * 25);
+      part.userData.velocity = dir;
+      part.userData.life = 0.5 + Math.random() * 1.0;
+      part.userData.rotSpeed = new THREE.Vector3(
+        (Math.random() - 0.5) * 10,
+        (Math.random() - 0.5) * 10,
+        (Math.random() - 0.5) * 10
+      );
+      group.add(part);
+    }
+    scene.add(group);
+    explosions.push(group);
+  }
+
+  // ─── SPACE STATION ──────────────────────────────────────────
+  const stationGroup = new THREE.Group();
+  stationGroup.position.set(0, 0, -600);
+
+  function createStation() {
+    const mainMat = new THREE.MeshPhongMaterial({ color: 0x667788, flatShading: true });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x334455, flatShading: true });
+    const lightMat = new THREE.MeshPhongMaterial({ color: 0x88ccff, flatShading: true, emissive: 0x224466 });
+    const glowMat = new THREE.MeshPhongMaterial({ color: 0x00ff88, emissive: 0x00ff88, flatShading: true, transparent: true, opacity: 0.8 });
+
+    // Main body - octahedron-ish (icosahedron for complexity)
+    const body = new THREE.Mesh(new THREE.IcosahedronGeometry(25, 0), mainMat);
+    stationGroup.add(body);
+
+    // Core sphere
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(15, 0), darkMat);
+    stationGroup.add(core);
+
+    // Ring structure
+    const ringGeo = new THREE.TorusGeometry(35, 3, 6, 24);
+    const ring = new THREE.Mesh(ringGeo, darkMat);
+    ring.rotation.x = Math.PI / 3;
+    stationGroup.add(ring);
+
+    // Second ring
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(38, 2, 4, 20), darkMat);
+    ring2.rotation.x = -Math.PI / 4;
+    ring2.rotation.y = Math.PI / 5;
+    stationGroup.add(ring2);
+
+    // Docking bay - bright opening
+    const bayGeo = new THREE.CylinderGeometry(4, 5, 8, 6);
+    const bay = new THREE.Mesh(bayGeo, glowMat);
+    bay.rotation.x = Math.PI / 2;
+    bay.position.set(0, -5, 22);
+    stationGroup.add(bay);
+
+    // Docking bay beacon light
+    const beaconGeo = new THREE.SphereGeometry(1.5, 6, 6);
+    const beacon = new THREE.Mesh(beaconGeo, glowMat);
+    beacon.position.set(0, -5, 27);
+    beacon.name = 'beacon';
+    stationGroup.add(beacon);
+
+    // Docking zone indicator
+    const dockZone = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 8, 12),
+      new THREE.MeshPhongMaterial({ color: 0x00ff88, transparent: true, opacity: 0.15, flatShading: true })
+    );
+    dockZone.position.set(0, -5, 26);
+    dockZone.name = 'dockZone';
+    stationGroup.add(dockZone);
+
+    // Antenna/spire
+    const spireGeo = new THREE.CylinderGeometry(0.3, 0.5, 18, 4);
+    const spire = new THREE.Mesh(spireGeo, mainMat);
+    spire.position.y = 28;
+    stationGroup.add(spire);
+
+    // Antenna tip
+    const tipGlow = new THREE.Mesh(new THREE.SphereGeometry(1.2, 6, 6), lightMat);
+    tipGlow.position.y = 38;
+    tipGlow.name = 'antennaTip';
+    stationGroup.add(tipGlow);
+
+    // Navigation lights
+    for (let i = 0; i < 12; i++) {
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.8, 4, 4), lightMat);
+      const angle = (i / 12) * Math.PI * 2;
+      const r = 26;
+      light.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+      stationGroup.add(light);
+    }
+
+    // Station point light
+    const stationLight = new THREE.PointLight(0x00ff88, 2, 100);
+    stationLight.position.copy(stationGroup.position).add(new THREE.Vector3(0, -5, 27));
+    scene.add(stationLight);
+    stationGroup.userData.stationLight = stationLight;
+  }
+
+  createStation();
+  scene.add(stationGroup);
+
+  // ─── CAMERA ─────────────────────────────────────────────────
+  const cameraOffset = new THREE.Vector3(0, 4, 14);
+  let cameraSmoothPos = new THREE.Vector3(0, 4, 14);
+
+  // ─── MINIMAP ────────────────────────────────────────────────
+  const minimapCanvas = document.getElementById('minimap-canvas');
+  const minimapCtx = minimapCanvas.getContext('2d');
+
+  function drawMinimap() {
+    minimapCtx.fillStyle = 'rgba(0,20,0,0.9)';
+    minimapCtx.fillRect(0, 0, 140, 140);
+
+    const cx = 70, cy = 70;
+    const scale = 0.2;
+
+    // Station
+    const sx = cx + (stationGroup.position.x - playerGroup.position.x) * scale;
+    const sz = cy - (stationGroup.position.z - playerGroup.position.z) * scale;
+    minimapCtx.fillStyle = '#0f8';
+    minimapCtx.beginPath();
+    minimapCtx.arc(sx, sz, 5, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    // Player at center
+    minimapCtx.fillStyle = '#0f0';
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    // Player direction indicator
+    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(playerGroup.quaternion);
+    minimapCtx.strokeStyle = '#0f0';
+    minimapCtx.lineWidth = 1;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(cx, cy);
+    minimapCtx.lineTo(cx + dir.x * 15, cy - dir.z * 15);
+    minimapCtx.stroke();
+
+    // Enemies
+    for (const e of enemies) {
+      const ex = cx + (e.position.x - playerGroup.position.x) * scale;
+      const ez = cy - (e.position.z - playerGroup.position.z) * scale;
+      if (ex > 5 && ex < 135 && ez > 5 && ez < 135) {
+        minimapCtx.fillStyle = '#f44';
+        minimapCtx.beginPath();
+        minimapCtx.arc(ex, ez, 2, 0, Math.PI * 2);
+        minimapCtx.fill();
+      }
+    }
+
+    // Range ring
+    minimapCtx.strokeStyle = 'rgba(0,100,0,0.3)';
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 70, 0, Math.PI * 2);
+    minimapCtx.stroke();
+  }
+
+  // ─── GAME LOOP ──────────────────────────────────────────────
+  let prevTime = performance.now();
+
+  function update() {
+    if (gameWon) {
+      renderer.render(scene, camera);
+      requestAnimationFrame(update);
+      return;
+    }
+
+    const now = performance.now();
+    let dt = (now - prevTime) / 1000;
+    if (dt > 0.05) dt = 0.05;
+    prevTime = now;
+    gameTime += dt;
+
+    // ── Input → Player rotation & thrust ──
+    let pitchInput = 0;
+    let yawInput = 0;
+    let rollInput = 0;
+
+    if (keys['KeyW'] || keys['ArrowUp']) pitchInput = -1;
+    if (keys['KeyS'] || keys['ArrowDown']) pitchInput = 1;
+    if (keys['KeyA']) rollInput = -1;
+    if (keys['KeyD']) rollInput = 1;
+    if (keys['ArrowLeft']) yawInput = -1;
+    if (keys['ArrowRight']) yawInput = 1;
+
+    // Apply rotations
+    playerEuler.x += pitchInput * playerRotSpeed * dt;
+    playerEuler.z += rollInput * playerRotSpeed * dt;
+    playerEuler.y += yawInput * playerRotSpeed * dt;
+
+    // Clamp pitch
+    playerEuler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, playerEuler.x));
+
+    // Slowly dampen roll when no input
+    if (rollInput === 0) {
+      playerEuler.z *= (1 - 2.0 * dt);
+    }
+
+    playerGroup.quaternion.setFromEuler(playerEuler);
+
+    // Thrust / brake
+    let thrustMag = 0;
+    if (keys['ShiftLeft'] || keys['ShiftRight']) {
+      thrustMag = playerThrust;
+    } else if (keys['ControlLeft'] || keys['ControlRight']) {
+      thrustMag = -playerBrake;
+    } else {
+      // Gentle coast
+      thrustMag = 5;
+    }
+
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(playerGroup.quaternion);
+    playerVel.add(forward.multiplyScalar(thrustMag * dt));
+
+    // Drag
+    playerVel.multiplyScalar(Math.pow(playerDrag, dt * 60));
+
+    // Clamp speed
+    const speed = playerVel.length();
+    if (speed > playerMaxSpeed) {
+      playerVel.normalize().multiplyScalar(playerMaxSpeed);
+    }
+
+    // Move player
+    playerGroup.position.add(playerVel.clone().multiplyScalar(dt));
+
+    // Fire lasers
+    if (keys['Space']) {
+      fireLaser();
+    }
+
+    // ── Update engines visual ──
+    playerGroup.children.forEach(child => {
+      if (child.name === 'engineExhaust') {
+        const intensity = speed / playerMaxSpeed;
+        child.material.opacity = 0.4 + intensity * 0.6;
+        child.scale.z = 0.8 + intensity * 2.0;
+      }
+    });
+
+    // ── Update lasers ──
+    for (let i = lasers.length - 1; i >= 0; i--) {
+      const laser = lasers[i];
+      laser.position.add(laser.userData.velocity.clone().multiplyScalar(dt));
+      laser.userData.life -= dt;
+      if (laser.userData.life <= 0) {
+        scene.remove(laser);
+        lasers.splice(i, 1);
+      }
+    }
+
+    // ── Update enemies ──
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+
+      // Slowly track toward player
+      const toPlayer = new THREE.Vector3().subVectors(playerGroup.position, enemy.position);
+      const dist = toPlayer.length();
+      if (dist > 10) {
+        toPlayer.normalize();
+        const speed = 8;
+        enemy.userData.velocity.add(toPlayer.multiplyScalar(speed * dt));
+        enemy.userData.velocity.multiplyScalar(0.99);
+        enemy.position.add(enemy.userData.velocity.clone().multiplyScalar(dt));
+      }
+
+      // Orient enemy toward player
+      if (dist > 5) {
+        const lookTarget = playerGroup.position.clone();
+        enemy.lookAt(lookTarget);
+        enemy.rotateY(Math.PI); // Face player (cones point forward)
+      }
+
+      // Laser-enemy collision
+      for (let j = lasers.length - 1; j >= 0; j--) {
+        const laser = lasers[j];
+        const lDist = laser.position.distanceTo(enemy.position);
+        if (lDist < enemy.userData.radius) {
+          // Hit!
+          createExplosion(enemy.position.clone());
+          scene.remove(enemy);
+          enemies.splice(i, 1);
+
+          scene.remove(laser);
+          lasers.splice(j, 1);
+
+          score += 100;
+          break;
+        }
+      }
+
+      // Player-enemy collision
+      if (enemies[i]) {
+        const pDist = playerGroup.position.distanceTo(enemy.position);
+        if (pDist < 6) {
+          createExplosion(enemy.position.clone());
+          scene.remove(enemy);
+          enemies.splice(i, 1);
+          score += 50;
+        }
+      }
+    }
+
+    // Respawn enemies
+    if (enemies.length < 6) {
+      spawnEnemy();
+    }
+
+    // ── Update explosions ──
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      const exp = explosions[i];
+      let allDead = true;
+      exp.children.forEach(child => {
+        if (child.userData.life > 0) {
+          allDead = false;
+          child.position.add(child.userData.velocity.clone().multiplyScalar(dt));
+          child.userData.life -= dt;
+          child.rotation.x += child.userData.rotSpeed.x * dt;
+          child.rotation.y += child.userData.rotSpeed.y * dt;
+          child.rotation.z += child.userData.rotSpeed.z * dt;
+          const s = Math.max(0, child.userData.life);
+          child.scale.setScalar(s);
+        }
+      });
+      if (allDead) {
+        scene.remove(exp);
+        explosions.splice(i, 1);
+      }
+    }
+
+    // ── Rotate station ──
+    stationGroup.rotation.y += dt * 0.15;
+    stationGroup.rotation.z = Math.sin(gameTime * 0.3) * 0.05;
+
+    // Update station light position
+    if (stationGroup.userData.stationLight) {
+      stationGroup.userData.stationLight.position.copy(stationGroup.position).add(new THREE.Vector3(0, -5, 27));
+    }
+
+    // Beacon pulse
+    stationGroup.children.forEach(child => {
+      if (child.name === 'beacon') {
+        child.scale.setScalar(0.8 + Math.sin(gameTime * 4) * 0.3);
+      }
+      if (child.name === 'antennaTip') {
+        child.material.emissive.setHex(Math.sin(gameTime * 3) > 0 ? 0x224466 : 0x000000);
+      }
+    });
+
+    // ── Docking check ──
+    if (!gameWon) {
+      const dockZone = stationGroup.children.find(c => c.name === 'dockZone');
+      if (dockZone) {
+        const worldDockPos = new THREE.Vector3();
+        dockZone.getWorldPosition(worldDockPos);
+        const dockDist = playerGroup.position.distanceTo(worldDockPos);
+        if (dockDist < 10) {
+          gameWon = true;
+          document.getElementById('win-overlay').classList.add('show');
+          document.getElementById('final-score').textContent = 'Final Score: ' + score;
+        }
+      }
+    }
+
+    // ── Camera follow ──
+    const idealCamOffset = cameraOffset.clone().applyQuaternion(playerGroup.quaternion);
+    idealCamOffset.add(playerGroup.position);
+    cameraSmoothPos.lerp(idealCamOffset, Math.min(1, 6 * dt));
+    camera.position.copy(cameraSmoothPos);
+    const lookAt = playerGroup.position.clone().add(
+      new THREE.Vector3(0, 0, 1).applyQuaternion(playerGroup.quaternion).multiplyScalar(20)
+    );
+    camera.lookAt(lookAt);
+
+    // ── Update HUD ──
+    document.getElementById('speed-val').textContent = Math.round(speed);
+    document.getElementById('score-val').textContent = score;
+    const distToStation = playerGroup.position.distanceTo(stationGroup.position);
+    document.getElementById('dist-val').textContent = Math.round(distToStation) + ' m';
+
+    // Station direction hint
+    if (distToStation > 50) {
+      const dirToStation = new THREE.Vector3().subVectors(stationGroup.position, playerGroup.position).normalize();
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(playerGroup.quaternion);
+      const dot = forward.dot(dirToStation);
+      if (dot < 0.5) {
+        document.getElementById('dist-val').style.color = '#ff0';
+      } else {
+        document.getElementById('dist-val').style.color = '#0f0';
+      }
+    }
+
+    // ── Minimap ──
+    drawMinimap();
+
+    // ── Render ──
+    renderer.render(scene, camera);
+    requestAnimationFrame(update);
+  }
+
+  // ─── RESIZE HANDLER ─────────────────────────────────────────
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ─── START ──────────────────────────────────────────────────
+  update();
+})();
+</script>
+</body>
+</html>
