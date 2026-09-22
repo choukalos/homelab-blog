@@ -57,6 +57,14 @@
       "description": "Chris Saunders' physics-based landing simulator challenged players to use limited fuel to safely land a spacecraft on marked landing pads while avoiding craters and mountains. Originally released as a single-screen arcade game, its realistic physics and difficulty made it a cult favorite and inspired countless space-landing games and modern titles.",
       "gameFile": "lunar-lander.html",
       "screenshot": "lunar-lander.png"
+    },
+    {
+      "title": "Zombie City: Last Stand",
+      "company": "Original",
+      "year": "2025",
+      "description": "A first-person zombie survival shooter rendered in real-time 3D with Three.js. Defend a fog-drenched downtown block against endless waves of the undead: walkers, sprinting runners, and hulking brutes. Five weapons from a sidearm to a bolt-action sniper, glowing ammo and medkit drops, headshot bonuses, and a big payout for every wave you clear. Fully self-contained in a single HTML file.",
+      "gameFile": "zombie-city.html",
+      "screenshot": "zombie-city.png"
     }
   ]
 }

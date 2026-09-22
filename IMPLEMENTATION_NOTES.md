@@ -4,6 +4,18 @@ Running log of discovered assumptions, changes, test results, and rollback steps
 
 ---
 
+## 2026-09-22 — Added Zombie City: Last Stand to the arcade
+
+- New game from `~/Code/one-page-arcade/zombie-city.html` (Three.js FPS, 730 KB single file) → copied to `static/arcade/zombie-city.html`.
+- `data/arcade/games.json`: appended 8th entry (title "Zombie City: Last Stand", company Original, year 2025, description from the Ghost `games.json` source of truth).
+- Screenshot `static/arcade/shots/zombie-city.png` (800×600) captured with headless Chrome via CDP: `Emulation.setDeviceMetricsOverride` 800×600 (plain `--window-size` gives a 513 px viewport), auto-clicked `#startBtn` (DEPLOY) 2 s after load, waited for wave 1, then staged 4 walkers in front of the camera (`z.group.position.set(...)`, `state='walk'`) before `Page.captureScreenshot`.
+  - Gotcha: `--virtual-time-budget` fast-forwards `setTimeout` but `requestAnimationFrame` barely fires (~4 frames), so the game loop never advances — use real-time CDP waits instead.
+  - Verified without vision access: DOM probe (`state=playing, wave=1, alive=4`), pixel stats (78 % non-dark, HUD/gun zones lit), and a with-vs-without-zombies frame diff (25 % of pixels differ, concentrated in the center band where the zombies were placed).
+- `hugo --minify --gc`: clean; `/arcade/` now renders 8 cards; `public/arcade/zombie-city.html` + `shots/zombie-city.png` present in build output.
+- Still excluded from the blog arcade: `joust.html` (broken), `rolling-thunder.html` (deprioritized) — both exist in `~/Code/one-page-arcade/` and in the Ghost theme's `games.json`.
+
+---
+
 ## 2026-08-24 — Part A kickoff (laptop)
 
 ### Discovered state (laptop)
