@@ -52,7 +52,7 @@ Running log of discovered assumptions, changes, test results, and rollback steps
 Hugo 0.165 (2026-08) changed template APIs that older docs/tutorials get wrong:
 
 - **Section index layout is `layouts/<section>/section.html`** — `layouts/<section>/index.html` is silently ignored for section pages (falls back to `_default/list.html`). Home page is still `layouts/index.html`.
-- **Data files are read via `.Site.Data`** — `Page.GetJSON` is gone. `data/arcade/games.json` is reachable as `index (index (index .Site.Data "arcade") "games") "games"` (dir → filename → key). Range items are `interface{}`, so use `index . "field"`, not `.field`.
+- **Data files are read via `hugo.Data`** (`.Site.Data` deprecated in v0.156.0) — `Page.GetJSON` is gone. `data/arcade/games.json` is reachable as `index (index (index hugo.Data "arcade") "games") "games"` (dir → filename → key). Range items are `interface{}`, so use `index . "field"`, not `.field`.
 - **`languageCode` config key deprecated** → use `locale`.
 - Standard sprig-ish functions like `keys`/`typeOf` are not available; `index`/`len`/`printf`/`dict`/`transform` are.
 

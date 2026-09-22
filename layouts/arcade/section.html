@@ -1,5 +1,5 @@
 {{ define "main" }}
-{{ $games := index .Site.Data "arcade" }}
+{{ $games := index hugo.Data "arcade" }}
 {{ $list := index (index $games "games") "games" }}
 <header class="list-head">
   <h1 class="mono">ARCADE</h1>

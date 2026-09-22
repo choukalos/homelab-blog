@@ -28,5 +28,6 @@ Every game follows the same structure (see the arcade's `ARCHITECTURE.md` in the
 | Missile Command | Atari | 1980 |
 | Tetris | Electronorgtechnika | 1984 |
 | Lunar Lander | Atari | 1979 |
+| Zombie City: Last Stand | Original | 2025 |
 
 More games will be added over time — the index is data-driven, so a new game is one HTML file plus one JSON entry.
