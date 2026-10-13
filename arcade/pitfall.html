@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pitfall! -- Jungle Run</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Courier New',monospace;}
+canvas{display:block;}
+#crt{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.1) 0px,rgba(0,0,0,0.1) 1px,transparent 1px,transparent 3px);}
+#crt::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.4) 100%);}
+#hud{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:20px;z-index:5;color:#e8f5e9;font-size:13px;font-weight:bold;text-shadow:0 0 10px #2e7d32;letter-spacing:1px;}
+#hud span{background:rgba(5,20,10,0.7);padding:5px 12px;border-radius:4px;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;z-index:20;pointer-events:none;}
+#overlay>div{background:rgba(5,15,8,0.94);border:2px solid #2e7d32;border-radius:8px;padding:32px 48px;text-align:center;color:#e8f5e9;text-shadow:0 0 8px #2e7d32;max-width:540px;box-shadow:0 0 60px rgba(46,125,50,0.12);}
+#overlay h2{font-size:32px;margin-bottom:4px;letter-spacing:4px;color:#e8f5e9;}
+#overlay h3{font-size:15px;margin:12px 0 6px;letter-spacing:2px;}
+#overlay p{font-size:13px;margin:4px 0;color:#a5d6a7;line-height:1.5;}
+.c-yellow{color:#ffd54f!important;text-shadow:0 0 6px #ffd54f!important;}
+.c-green{color:#a5d6a7!important;text-shadow:0 0 6px #a5d6a7!important;}
+.c-red{color:#ef9a9a!important;text-shadow:0 0 6px #ef9a9a!important;}
+.c-cyan{color:#64b5f6!important;text-shadow:0 0 6px #64b5f6!important;}
+.c-amber{color:#ffab40!important;text-shadow:0 0 6px #ffab40!important;}
+.c-white{color:#fff!important;text-shadow:0 0 6px #fff!important;}
+</style>
+</head><body>
+<div id="crt"></div>
+<div id="hud">
+<span id="uScore">SCORE: 0</span>
+<span id="uHi">HI: 0</span>
+<span id="uGems">GEMS: 0/10</span>
+<span id="uTime">TIME: 100</span>
+<span id="uLives">LIVES: 3</span>
+</div>
+<canvas id="c"></canvas>
+<div id="overlay"><div id="msgBox">
+<h2>PITFALL!</h2>
+<p class="c-yellow">JUNGLE RUN</p>
+<h3>CONTROLS</h3>
+<p><span class="c-green">LEFT/RIGHT</span> run &nbsp; <span class="c-green">UP/SPACE</span> jump &nbsp; <span class="c-green">P</span> pause</p>
+<p>Grab all <span class="c-yellow">10 gems</span>. Dodge crocs, snakes and spikes. Grab vines to cross pits.</p>
+<p style="margin-top:12px;">Press <span class="c-yellow">ENTER</span> to start</p>
+</div></div><script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// --- RESIZE ---
+function resize() {
+  canvas.width = Math.min(window.innerWidth - 100, 900);
+  canvas.height = Math.min(window.innerHeight - 20, 680);
+  canvas.width = Math.max(500, canvas.width);
+  canvas.height = Math.max(420, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- GEOMETRY & CONSTANTS ---
+const W = () => canvas.width;
+const H = () => canvas.height;
+const GROUND = () => H() - 90;
+const PI2 = Math.PI * 2;
+const GRAV = 0.5, RUN = 3.5, JUMPV = -13.5, JUMPCUT = -4.5, MAXFALL = 12;
+const COYOTE_MS = 80, BUFFER_MS = 120, CAM_LOOK = 120, CAM_LERP = 0.12;
+
+// --- HELPERS ---
+function R(a, b) { return a + Math.random() * (b - a); }
+function C(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function L(a, b, t) { return a + (b - a) * t; }
+function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+function segAt(x) {
+  if (!levelData) return null;
+  for (let i = 0; i < levelData.segs.length; i++) {
+    const s = levelData.segs[i];
+    if (x >= s.x && x < s.x + s.w) return s;
+  }
+  return null;
+}
+function standY(x) {
+  const s = segAt(x);
+  return (s && s.type === 'ground') ? s.groundTop : null;
+}
+
+// --- SHARED STATE (declared here, nowhere else) ---
+let gameState = 'TITLE';
+let score = 0, hiScore = parseInt(localStorage.getItem('pitfall_hi') || '0'), lives = 3, level = 1, loopN = 1;
+let timeLeft = 100, lastTickSec = -1, nextLife = 5000;
+let camX = 0, checkpointX = 40, tGlobal = 0;
+let pat = null, crocs = [], snakes = [], vines = [], gems = [], particles = [], popups = [];
+let levelData = null;
+let goT = 0, lvlDoneT = 0, dmgFlash = 0;
+let keys = { left: false, right: false, jumpHeld: false, jumpBufAt: 0 };
+
+// --- LEVELS ---
+// compact [type, width, elev?]; elev = px below surface (ground segs only, 60 = underground)
+// depth: ground 0, pit/vine 60, spike 40. Pits/spikes/vines are always surface-level.
+const DEPTH = { ground: 0, pit: 60, vine: 60, spike: 40 };
+const LEVELS = [
+  { // Level 1: 4600px, underground at segs 13-15 (drop 2820, rise wall 3720)
+    segs: [["ground",300],["pit",140],["ground",260],["spike",120],["ground",240],["vine",140],["ground",280],["ground",320],["pit",140],["ground",260],["spike",120],["ground",300],["ground",200],["ground",200,60],["ground",400,60],["ground",300,60],["ground",200],["ground",260],["spike",120],["ground",300]],
+    gemDefs: [[0,150,30],[1,90,40],[2,130,0],[3,60,60],[4,120,0],[5,100,140],[7,160,30],[8,90,40],[14,200,0],[15,150,20]]
+  },
+  { // Level 2: 4240px (4 pit, 2 snake, 1 vine, 2 spike), underground at segs 15-16
+    segs: [["ground",300],["pit",140],["ground",260],["spike",120],["ground",240],["pit",140],["ground",280],["vine",140],["ground",240],["spike",120],["ground",260],["pit",140],["ground",280],["pit",140],["ground",220],["ground",200,60],["ground",380,60],["ground",280],["spike",120],["ground",240]],
+    gemDefs: [[0,150,30],[1,90,40],[2,130,0],[3,60,60],[5,90,40],[6,140,0],[7,70,140],[11,130,0],[16,190,0],[18,60,30]]
+  },
+  { // Level 3: 5160px (5 pit, 3 snake, 2 vine, 3 spike), 2 underground (segs 21-22, 25-26)
+    segs: [["ground",240],["pit",140],["ground",110],["spike",120],["ground",280],["vine",140],["ground",100],["pit",140],["ground",110],["spike",120],["ground",280],["pit",140],["ground",100],["vine",140],["ground",110],["spike",120],["ground",280],["pit",140],["ground",110],["pit",140],["ground",120],["ground",200,60],["ground",360,60],["ground",260],["ground",180],["ground",200,60],["ground",340,60],["ground",240],["ground",200]],
+    gemDefs: [[0,120,30],[1,90,40],[4,140,30],[5,70,140],[7,90,40],[10,140,0],[13,70,140],[16,140,0],[22,180,0],[26,170,0]]
+  }
+];
+
+function initPat() {
+  return { x: 40, y: GROUND() - 30, vx: 0, vy: 0, state: 'idle', facing: 1,
+           invuln: 0, onGround: true, coyoteAt: 0, bufferAt: 0, deathT: 0,
+           deathKind: '', hangVine: null, runT: 0 };
+}
+
+function loadLevel(n) {
+  const def = LEVELS[n - 1];
+  let x = 0;
+  const segs = def.segs.map(([type, w, elev]) => {
+    const s = { type, x, w, depth: DEPTH[type], elev: elev || 0 };
+    x += w;
+    return s;
+  });
+  for (const s of segs) s.groundTop = (s.type === 'ground') ? GROUND() + s.elev : GROUND();
+  levelData = { width: x, segs };
+  gems = def.gemDefs.map(([si, off, h]) => ({ x: segs[si].x + off, y: segs[si].groundTop - h - 12, taken: false, t: R(0, PI2) }));
+  crocs = segs.filter(s => s.type === 'pit').map(s => ({ x: s.x + 10, y: GROUND() + 6, dir: 1, t: R(0, PI2), pit0: s.x, pit1: s.x + s.w, open: 0 }));
+  // snake segments: L1 segs 7,14; L2 segs 6,16; L3 segs 4,10,16
+  const snakeSegs = { 1: [7, 14], 2: [6, 16], 3: [4, 10, 16] }[n] || [];
+  snakes = snakeSegs.map(i => ({ x: segs[i].x + 10, y: segs[i].groundTop - 10, dir: 1, s0: segs[i].x, s1: segs[i].x + segs[i].w - 24, turnAt: 0, dead: false, deadT: 0 }));
+  vines = segs.filter(s => s.type === 'vine').map(s => ({ x: s.x + s.w / 2, t: R(0, PI2) }));
+  camX = 0; checkpointX = 40;
+  pat = initPat();
+  particles = []; popups = [];
+}
+
+function startGame() {
+  ensureAudio();
+  score = 0; lives = 3; level = 1; loopN = 1; timeLeft = 100; lastTickSec = -1; nextLife = 5000;
+  loadLevel(1);
+  gameState = 'PLAYING';
+  goT = 1200;
+  hideMsg();
+  updateHUD();
+}
+
+// --- INPUT ---
+window.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.left = true;
+  if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.right = true;
+  if (k === 'ArrowUp' || k === ' ' || k === 'w' || k === 'W') {
+    if (!keys.jumpHeld) keys.jumpBufAt = performance.now();
+    keys.jumpHeld = true;
+    e.preventDefault();
+  }
+  if (k === 'ArrowUp' || k === 'ArrowDown' || k === ' ' || k === 'ArrowLeft' || k === 'ArrowRight') e.preventDefault();
+  ensureAudio();
+  if (k === 'Enter' && (gameState === 'TITLE' || gameState === 'GAMEOVER' || gameState === 'KILL')) startGame();
+  if (k === 'p' || k === 'P') {
+    if (gameState === 'PLAYING') {
+      gameState = 'PAUSED';
+      showMsg('<h2>PAUSED</h2><p style="margin-top:12px;">Press <span class="c-yellow">P</span> to resume</p>');
+    } else if (gameState === 'PAUSED') {
+      gameState = 'PLAYING';
+      hideMsg();
+    }
+  }
+});
+window.addEventListener('keyup', e => {
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.left = false;
+  if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.right = false;
+  if (k === 'ArrowUp' || k === ' ' || k === 'w' || k === 'W') keys.jumpHeld = false;
+});
+
+// Title backdrop: load level 1 so the title screen has a static scene
+loadLevel(1);// --- PAT ---
+let lastJumpHeld = false;
+
+function updatePat(dt, f) {
+  if (!pat) return;
+  // dead: play anim, then respawn
+  if (pat.state === 'dead') {
+    if (pat.deathKind !== 'splash') {
+      pat.vy = Math.min(pat.vy + GRAV * f, MAXFALL);
+      pat.y += pat.vy * f;
+    }
+    pat.deathT -= dt;
+    if (pat.deathT <= 0) respawn();
+    return;
+  }
+  if (pat.state === 'hang') return; // vines own this state
+  pat.invuln = Math.max(0, pat.invuln - dt);
+
+  // variable jump: release while rising cuts velocity
+  if (!keys.jumpHeld && lastJumpHeld && pat.vy < JUMPCUT) pat.vy = JUMPCUT;
+  lastJumpHeld = keys.jumpHeld;
+
+  // horizontal
+  if (keys.left && !keys.right) { pat.vx = -RUN; pat.facing = -1; }
+  else if (keys.right && !keys.left) { pat.vx = RUN; pat.facing = 1; }
+  else pat.vx = 0;
+
+  // jump: buffer + coyote
+  const now = performance.now();
+  if (now - keys.jumpBufAt < BUFFER_MS && (pat.onGround || now - pat.coyoteAt < COYOTE_MS)) {
+    pat.vy = JUMPV;
+    pat.onGround = false;
+    keys.jumpBufAt = 0;
+    playSound('jump');
+  }
+
+  if (!pat.onGround) pat.vy = Math.min(pat.vy + GRAV * f, MAXFALL);
+
+  const prevFeet = pat.y + 30;
+  const oldX = pat.x;
+  pat.x += pat.vx * f;
+  pat.x = C(pat.x, 0, levelData.width - 20);
+  pat.y += pat.vy * f;
+
+  // landing / ledge / wall detection (sweep test)
+  const feetY = pat.y + 30;
+  const gy = standY(pat.x + 10);
+  const crossing = gy !== null && pat.vy >= 0 && feetY >= gy && prevFeet <= gy + 1;
+  const inside = gy !== null && pat.vy >= 0 && feetY > gy + 8 && !pat.onGround;
+  if (crossing || inside) {
+    // land — or snap back out of a raised ground's side we clipped into
+    // (a short jump at a tunnel exit pops up onto the ledge instead of
+    // sinking through the dirt; rising through the wall is still allowed)
+    pat.y = gy - 30;
+    pat.vy = 0;
+    pat.onGround = true;
+    if (pat.state === 'jump' || pat.state === 'fall') pat.state = 'idle';
+    const s = segAt(pat.x + 10);
+    if (pat.x > checkpointX && s && s.type === 'ground') checkpointX = pat.x;
+  } else if (pat.onGround) {
+    if (gy === null || gy > feetY + 1) {
+      // walked off a ledge (into a pit or onto lower ground) -> fall
+      pat.onGround = false;
+      pat.coyoteAt = now;
+      pat.state = 'fall';
+    } else if (feetY > gy + 1) {
+      // raised ground edge ahead (tunnel exit wall) -> push back
+      pat.x = C(oldX, 0, levelData.width - 20);
+    }
+  }
+
+  // state machine
+  if (pat.onGround) {
+    pat.state = Math.abs(pat.vx) > 0.1 ? 'run' : 'idle';
+    if (pat.state === 'run') pat.runT += dt;
+  } else {
+    pat.state = pat.vy < 0 ? 'jump' : 'fall';
+  }
+
+  // pit deaths: water (splash) and spikes — invuln does not protect
+  const seg = segAt(pat.x + 10);
+  if (seg && (seg.type === 'pit' || seg.type === 'vine') && feetY > GROUND() + 20) die('splash');
+  else if (seg && seg.type === 'spike' && feetY > seg.groundTop + 10) die('spike');
+}
+
+function die(kind) {
+  if (!pat || pat.state === 'dead') return;
+  if (pat.invuln > 0 && kind !== 'splash' && kind !== 'spike') return;
+  pat.state = 'dead';
+  pat.deathKind = kind;
+  pat.deathT = (kind === 'splash') ? 600 : 900;
+  pat.vy = (kind === 'splash') ? 0 : 2;
+  dmgFlash = 150;
+  if (kind === 'splash') {
+    addParticles(pat.x + 10, GROUND() + 4, 12, '#64b5f6');
+    playSound('death_splash');
+  } else {
+    playSound('death_fall');
+  }
+}
+
+function respawn() {
+  lives--;
+  if (lives <= 0) { gameOver(); return; }
+  pat.x = checkpointX;
+  pat.y = (standY(checkpointX) || GROUND()) - 30;
+  pat.vx = 0; pat.vy = 0;
+  pat.state = 'idle';
+  pat.onGround = true;
+  pat.invuln = 2000;
+  pat.hangVine = null;
+  camX = C(pat.x + CAM_LOOK - W() / 2, 0, levelData.width - W());
+  updateHUD();
+}
+
+// --- GEMS ---
+function updateGems(f) {
+  if (!pat || pat.state === 'dead') return;
+  for (const g of gems) {
+    if (!g.taken && overlap(pat.x, pat.y, 20, 30, g.x, g.y, 12, 12)) {
+      g.taken = true;
+      score += 100;
+      addPopup(g.x, g.y - 8, '+100', '#ffd54f');
+      playSound('gem');
+      addParticles(g.x + 6, g.y + 6, 6, '#ffd54f');
+      if (score >= nextLife) {
+        nextLife += 5000;
+        if (lives < 6) {
+          lives++;
+          playSound('extra_life');
+          addPopup(pat.x, pat.y - 12, 'EXTRA LIFE!', '#a5d6a7');
+        }
+      }
+      if (gems.every(x => x.taken)) completeLevel();
+    }
+  }
+}// --- CROCS ---
+function updateCrocs(dt, f) {
+  for (const cr of crocs) {
+    cr.x += cr.dir * 0.8 * f;
+    if (cr.x < cr.pit0 + 10) { cr.x = cr.pit0 + 10; cr.dir = 1; }
+    if (cr.x > cr.pit1 - 34) { cr.x = cr.pit1 - 34; cr.dir = -1; }
+    cr.y = GROUND() + 6 + Math.sin(tGlobal / 300 + cr.t) * 4;
+    // jaw cycle: 1.6s period; 0-0.4s opening, 0.4-0.8s closing, 0.8-1.6s closed
+    const phase = (tGlobal / 1000 + cr.t * 0.1) % 1.6;
+    cr.open = phase < 0.4 ? phase / 0.4 : (phase < 0.8 ? (0.8 - phase) / 0.4 : 0);
+    if (pat && pat.state !== 'dead' && pat.invuln <= 0) {
+      // lethal: front 40% of the 34px box (13.6px) in facing direction, only while open
+      const zx = cr.dir > 0 ? cr.x + 34 - 13.6 : cr.x;
+      if (cr.open > 0.5 && overlap(pat.x, pat.y, 20, 30, zx, cr.y, 13.6, 20)) {
+        die('croc');
+        playSound('croc_snap');
+      } else if (cr.open <= 0.5 && pat.vy > 0 &&
+                 overlap(pat.x, pat.y, 20, 30, cr.x, cr.y, 34, 20) &&
+                 (pat.y + 30) >= cr.y && (pat.y + 30) <= cr.y + 8) {
+        // closed croc = solid block: Pat can land on it
+        pat.y = cr.y - 30;
+        pat.vy = 0;
+        pat.onGround = true;
+        if (pat.state === 'fall') pat.state = 'idle';
+      }
+    }
+  }
+}// --- SNAKES ---
+function updateSnakes(dt, f) {
+  for (const sn of snakes) {
+    if (sn.dead) { sn.deadT += dt; continue; }
+    const speed = (pat && pat.state !== 'dead' && Math.abs((pat.x + 10) - (sn.x + 12)) < 90) ? 2.2 : 1.0;
+    if (tGlobal >= sn.turnAt) {
+      sn.x += sn.dir * speed * f;
+      if (sn.x <= sn.s0) { sn.x = sn.s0; sn.dir = 1; sn.turnAt = tGlobal + 300; }
+      if (sn.x >= sn.s1) { sn.x = sn.s1; sn.dir = -1; sn.turnAt = tGlobal + 300; }
+    }
+    if (pat && pat.state !== 'dead' &&
+        overlap(pat.x, pat.y, 20, 30, sn.x, sn.y, 24, 10)) {
+      if (pat.vy > 0 && (pat.y + 30) <= sn.y + 8) {
+        // stomp: squash, +100, bounce
+        sn.dead = true; sn.deadT = 0;
+        score += 100;
+        addPopup(sn.x + 6, sn.y - 8, '+100', '#a5d6a7');
+        pat.vy = -8;
+        playSound('snake_hiss');
+        addParticles(sn.x + 12, sn.y + 5, 8, '#66bb6a');
+      } else if (pat.invuln <= 0) {
+        die('snake');
+      }
+    }
+  }
+  snakes = snakes.filter(s => !s.dead || s.deadT < 400);
+}// --- VINES ---
+let vineReleaseAt = -99999; // tGlobal of last vine release; blocks re-grab for NOGRAB_MS
+const NOGRAB_MS = 350;
+
+function updateVines(dt, f) {
+  for (const v of vines) {
+    v.sway = Math.sin(tGlobal / 1000 * PI2 * 0.5 + v.t) * 3; // ±3px at 0.5Hz
+    const bx = v.x - 15 + v.sway, by = GROUND() - 152; // grab box 30x24, center 140px above ground
+    const hanging = pat && pat.state === 'hang' && pat.hangVine === v;
+    // grab mid-jump/fall (not right after releasing a vine, or Pat re-grabs instantly)
+    if (pat && (pat.state === 'jump' || pat.state === 'fall') &&
+        tGlobal - vineReleaseAt > NOGRAB_MS &&
+        overlap(pat.x, pat.y, 20, 30, bx, by, 30, 24)) {
+      pat.state = 'hang';
+      pat.hangVine = v;
+      pat.x = v.x - 10 + v.sway;
+      pat.y = GROUND() - 155;
+      pat.vy = 0; pat.vx = 0;
+    }
+    if (hanging) {
+      pat.x = v.x - 10 + v.sway;
+      pat.y = GROUND() - 155;
+      if (keys.left || keys.right) {
+        pat.state = 'fall';
+        pat.vy = 0;
+        pat.hangVine = null;
+        vineReleaseAt = tGlobal;
+      } else if (performance.now() - keys.jumpBufAt < BUFFER_MS) {
+        pat.state = 'jump';
+        pat.vy = -6;
+        pat.hangVine = null;
+        keys.jumpBufAt = 0;
+        vineReleaseAt = tGlobal;
+        playSound('jump');
+      }
+      // gems in grab region collected while hanging
+      for (const g of gems) {
+        if (!g.taken && overlap(g.x, g.y, 12, 12, bx, by, 30, 24)) {
+          g.taken = true;
+          score += 100;
+          addPopup(g.x, g.y - 8, '+100', '#ffd54f');
+          playSound('gem');
+          addParticles(g.x + 6, g.y + 6, 6, '#ffd54f');
+        }
+      }
+    }
+  }
+}// --- WORLD: camera, particles, popups ---
+let lastWallMsg = 0;
+function updateWorld(dt, f) {
+  if (pat && levelData) {
+    const target = pat.x + CAM_LOOK - W() / 2; // lookahead 120px: camera center ahead of Pat
+    camX += (target - camX) * CAM_LERP * f;
+    camX = C(camX, 0, levelData.width - W());
+    // end-of-level wall: remind player the level ends when all gems are collected
+    if (pat.x > levelData.width - 35 && !gems.every(g => g.taken) && tGlobal - lastWallMsg > 1500) {
+      lastWallMsg = tGlobal;
+      addPopup(pat.x - 15, pat.y - 25, 'GET ALL ' + gems.length + ' GEMS!', '#ffd54f');
+    }
+  }
+  for (const p of particles) {
+    p.x += p.vx * f;
+    p.y += p.vy * f;
+    p.vy += 0.2 * f;
+    p.life -= f;
+  }
+  particles = particles.filter(p => p.life > 0);
+  for (const p of popups) {
+    p.y -= 0.5 * f;
+    p.t += dt;
+  }
+  popups = popups.filter(p => p.t < 900);
+}
+
+function addParticles(x, y, n, color) {
+  for (let i = 0; i < n; i++)
+    particles.push({ x, y, vx: R(-2, 2), vy: R(-3, 0), life: R(15, 30), max: 30, color, r: R(1, 3) });
+}
+
+function addPopup(x, y, text, color) {
+  popups.push({ x, y, text, t: 0, color });
+}// --- DRAW ---
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, H());
+  g.addColorStop(0, '#0a1f14');
+  g.addColorStop(1, '#123524');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W(), H());
+}
+
+function drawFoliage() {
+  // two parallax layers of leaf silhouettes (deterministic per column)
+  const layers = [
+    { sp: 0.3, col: 'rgba(18,53,36,0.9)', size: 90, yBase: GROUND() - 20 },
+    { sp: 0.6, col: 'rgba(27,74,48,0.85)', size: 60, yBase: GROUND() - 40 }
+  ];
+  for (const L of layers) {
+    ctx.fillStyle = L.col;
+    const off = -camX * L.sp;
+    const j0 = Math.floor((-L.size - off) / L.size);
+    const j1 = Math.ceil((W() - off) / L.size);
+    for (let j = j0; j <= j1; j++) {
+      const x = j * L.size + off;
+      const h = L.size * (0.6 + 0.4 * Math.abs(Math.sin(j * 12.9898 + L.sp * 78.233)));
+      ctx.beginPath();
+      ctx.ellipse(x, L.yBase, L.size * 0.7, h, 0, 0, PI2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawVines() {
+  for (const v of vines) {
+    const sx = v.x + (v.sway || 0);
+    ctx.strokeStyle = '#33691e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.quadraticCurveTo(sx - 8, GROUND() - 220, sx, GROUND() - 140);
+    ctx.stroke();
+    // leaf tuft at grab point
+    ctx.fillStyle = '#558b2f';
+    ctx.beginPath();
+    ctx.ellipse(sx - 5, GROUND() - 140, 7, 4, -0.5, 0, PI2);
+    ctx.ellipse(sx + 5, GROUND() - 140, 7, 4, 0.5, 0, PI2);
+    ctx.fill();
+  }
+}
+
+function drawGround() {
+  const segs = levelData.segs;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (s.type !== 'ground') continue;
+    const x = s.x, w = s.w, y = s.groundTop;
+    const prev = segs[i - 1], next = segs[i + 1];
+    if (y > GROUND()) {
+      // underground cave: rock ceiling + dark passage + rocky floor
+      const ceil = GROUND() + 20;
+      ctx.fillStyle = '#5d4037'; // ceiling = the jungle floor overhead
+      ctx.fillRect(x, GROUND(), w, 20);
+      ctx.fillStyle = '#4e342e';
+      for (let i2 = 0; i2 < w; i2 += 30) ctx.fillRect(x + i2 + ((i2 * 7) % 15), GROUND() + 6 + ((i2 * 11) % 8), 8, 4);
+      ctx.fillStyle = '#261a12'; // dark passage
+      ctx.fillRect(x, ceil, w, y - ceil);
+      ctx.fillStyle = '#4e342e'; // rocky floor (darker than surface dirt)
+      ctx.fillRect(x, y, w, H() - y);
+      ctx.fillStyle = '#3e2723';
+      for (let i2 = 0; i2 < w; i2 += 26) ctx.fillRect(x + i2 + ((i2 * 7) % 13), y + 12 + ((i2 * 11) % 14), 10, 5);
+      ctx.fillStyle = '#5d4037'; // rock lip (no grass underground)
+      ctx.fillRect(x, y, w, 5);
+      // step faces: cave mouth and exit wall (passage height only)
+      ctx.fillStyle = '#5d4037';
+      if (prev && prev.type === 'ground' && prev.groundTop < y) {
+        ctx.fillRect(x, ceil, 10, y - ceil);
+      }
+      if (next && next.type === 'ground' && next.groundTop < y) {
+        ctx.fillRect(x + w - 10, ceil, 10, y - ceil);
+      }
+    } else {
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(x, y, w, H() - y);
+      ctx.fillStyle = '#4e342e';
+      for (let i2 = 0; i2 < w; i2 += 26) {
+        ctx.fillRect(x + i2 + ((i2 * 7) % 13), y + 18 + ((i2 * 11) % 30), 10, 5);
+      }
+      ctx.fillStyle = '#2e7d32';
+      ctx.fillRect(x, y, w, 8);
+      ctx.fillStyle = '#388e3c';
+      for (let i2 = 0; i2 < w; i2 += 12) ctx.fillRect(x + i2, y - 3 - ((i2 * 5) % 4), 4, 4);
+    }
+  }
+}
+
+function drawWalls() {
+  const w = levelData.width;
+  ctx.fillStyle = '#14301f';
+  ctx.fillRect(-6, 0, 14, H());
+  ctx.fillRect(w - 8, 0, 14, H());
+  ctx.fillStyle = '#2e5d3a';
+  for (let y = 50; y < H(); y += 90) {
+    ctx.beginPath();
+    ctx.ellipse(4, y, 15, 9, 0.5, 0, PI2);
+    ctx.ellipse(w - 2, y + 45, 15, 9, -0.5, 0, PI2);
+    ctx.fill();
+  }
+}
+
+function drawWater() {
+  for (const s of levelData.segs) {
+    if (s.type !== 'pit' && s.type !== 'vine') continue;
+    const x = s.x, w = s.w, y = GROUND();
+    ctx.fillStyle = '#1e88e5';
+    ctx.fillRect(x, y, w, s.depth);
+    ctx.fillStyle = '#0d47a1';
+    ctx.fillRect(x, y + s.depth - 10, w, 10);
+    // animated surface
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= w; i += 8) {
+      const yy = y + Math.sin((x + i) * 0.08 + tGlobal / 250) * 2;
+      i === 0 ? ctx.moveTo(x + i, yy) : ctx.lineTo(x + i, yy);
+    }
+    ctx.stroke();
+    // bubbles
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let i = 0; i < 3; i++) {
+      const bx = x + ((i * 53 + Math.floor(tGlobal / 900) * 17) % w);
+      const by = y + s.depth - 8 - ((tGlobal / 12 + i * 40) % s.depth);
+      ctx.beginPath();
+      ctx.arc(bx, by, 2, 0, PI2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawSpikes() {
+  for (const s of levelData.segs) {
+    if (s.type !== 'spike') continue;
+    const x = s.x, y = s.groundTop;
+    ctx.fillStyle = '#90a4ae';
+    for (let i = 0; i < s.w; i += 20) {
+      ctx.beginPath();
+      ctx.moveTo(x + i, y + 2);
+      ctx.lineTo(x + i + 10, y - 18);
+      ctx.lineTo(x + i + 20, y + 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#546e7a';
+    ctx.fillRect(x, y + 2, s.w, s.depth - 2);
+  }
+}
+
+function drawGems() {
+  for (const g of gems) {
+    if (g.taken) continue;
+    const cx = g.x + 6, cy = g.y + 6;
+    const pulse = 0.7 + 0.3 * Math.sin(tGlobal / 300 + g.t);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.sin(tGlobal / 500 + g.t) * 0.5);
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 10 * pulse;
+    ctx.fillStyle = '#ffd54f';
+    ctx.beginPath();
+    ctx.moveTo(0, -7); ctx.lineTo(6, 0); ctx.lineTo(0, 7); ctx.lineTo(-6, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff8e1';
+    ctx.beginPath();
+    ctx.moveTo(0, -3); ctx.lineTo(3, 0); ctx.lineTo(0, 3); ctx.lineTo(-3, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCrocs() {
+  for (const cr of crocs) {
+    const x = cr.x, y = cr.y, open = cr.open;
+    ctx.save();
+    ctx.translate(x, y);
+    if (cr.dir < 0) { ctx.translate(34, 0); ctx.scale(-1, 1); }
+    // body
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath();
+    ctx.ellipse(17, 12, 16, 8, 0, 0, PI2);
+    ctx.fill();
+    // tail
+    ctx.beginPath();
+    ctx.moveTo(2, 12); ctx.lineTo(-4, 8); ctx.lineTo(2, 16);
+    ctx.fill();
+    // head + jaw
+    ctx.fillStyle = '#388e3c';
+    const jaw = open * 6;
+    ctx.fillRect(24, 4, 10, 6 - jaw * 0.5);      // upper jaw
+    ctx.fillRect(24, 10 + jaw, 10, 5);            // lower jaw
+    ctx.fillStyle = '#1b5e20';
+    ctx.fillRect(26, 6, 6, 2);                    // mouth gap
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(31, 5, 2, 2);                    // eye
+    ctx.restore();
+  }
+}
+
+function drawSnakes() {
+  for (const sn of snakes) {
+    ctx.save();
+    ctx.translate(sn.x, sn.y);
+    if (sn.dead) {
+      ctx.globalAlpha = Math.max(0, 1 - sn.deadT / 400);
+      ctx.fillStyle = '#33691e';
+      ctx.fillRect(0, 4, 24, 6);
+      ctx.restore();
+      continue;
+    }
+    const wig = Math.sin(tGlobal / 90 + sn.x * 0.2) * 2;
+    ctx.fillStyle = '#66bb6a';
+    // body coils
+    ctx.beginPath();
+    ctx.ellipse(6, 6 + wig * 0.4, 6, 4, 0, 0, PI2);
+    ctx.ellipse(14, 6 - wig * 0.4, 6, 4, 0, 0, PI2);
+    ctx.fill();
+    // head
+    const hx = sn.dir > 0 ? 20 : 2;
+    ctx.fillStyle = '#43a047';
+    ctx.beginPath();
+    ctx.ellipse(hx, 4 - wig * 0.3, 5, 4, 0, 0, PI2);
+    ctx.fill();
+    ctx.fillStyle = '#f44336';
+    ctx.fillRect(hx - 1, 3 - wig * 0.3, 2, 2); // eye
+    ctx.strokeStyle = '#e53935';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(hx + (sn.dir > 0 ? 4 : -4), 4);
+    ctx.lineTo(hx + (sn.dir > 0 ? 8 : -8), 3 + wig * 0.5);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawPat() {
+  if (!pat) return;
+  const x = pat.x, y = pat.y;
+  // invulnerability blink
+  if (pat.invuln > 0 && Math.floor(pat.invuln / 100) % 2 === 0 && pat.state !== 'dead') return;
+  ctx.save();
+  ctx.translate(x + 10, y);
+  if (pat.facing < 0) ctx.scale(-1, 1);
+  const st = pat.state;
+  if (st === 'dead') {
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#e53935';
+    ctx.fillRect(-8, 8, 16, 10);
+    ctx.fillStyle = '#ffcc80';
+    ctx.fillRect(-6, 2, 12, 8);
+    ctx.restore();
+    return;
+  }
+  const run = st === 'run' ? Math.sin(pat.runT / 60) : 0;
+  // legs
+  ctx.fillStyle = '#1565c0';
+  if (st === 'hang') {
+    ctx.fillRect(-5, 22, 4, 8);
+    ctx.fillRect(1, 22, 4, 8);
+  } else if (st === 'jump' || st === 'fall') {
+    ctx.fillRect(-6, 20, 5, 9);
+    ctx.fillRect(1, 22, 5, 8);
+  } else {
+    ctx.fillRect(-6 + run * 3, 22, 5, 8);
+    ctx.fillRect(1 - run * 3, 22, 5, 8);
+  }
+  // shirt
+  ctx.fillStyle = '#e53935';
+  ctx.fillRect(-8, 10, 16, 12);
+  // arms
+  ctx.fillStyle = '#ffcc80';
+  if (st === 'hang') {
+    ctx.fillRect(-7, -2, 4, 12);
+    ctx.fillRect(3, -2, 4, 12);
+  } else if (st === 'jump') {
+    ctx.fillRect(-9, 6, 4, 10);
+    ctx.fillRect(5, 6, 4, 10);
+  } else {
+    ctx.fillRect(-9, 12 + run * 2, 4, 9);
+    ctx.fillRect(5, 12 - run * 2, 4, 9);
+  }
+  // head
+  ctx.fillStyle = '#ffcc80';
+  ctx.fillRect(-6, 0, 12, 10);
+  // hair
+  ctx.fillStyle = '#4e342e';
+  ctx.fillRect(-6, -2, 12, 4);
+  ctx.fillRect(4, 0, 3, 6);
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, PI2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPopups() {
+  ctx.font = 'bold 13px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  for (const p of popups) {
+    ctx.globalAlpha = Math.max(0, 1 - p.t / 900);
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x + 6, p.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+function drawVignette() {
+  if (dmgFlash > 0) {
+    ctx.fillStyle = 'rgba(229,57,53,' + (0.35 * dmgFlash / 150) + ')';
+    ctx.fillRect(0, 0, W(), H());
+  }
+  if (goT > 0) {
+    ctx.globalAlpha = Math.min(1, goT / 400);
+    ctx.font = 'bold 56px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd54f';
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 20;
+    ctx.fillText('GO!', W() / 2, H() / 2 - 60);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+}
+
+function draw() {
+  if (!levelData) return;
+  drawBackground();
+  drawFoliage();
+  ctx.save();
+  ctx.translate(-camX, 0);
+  drawVines();
+  drawGround();
+  drawWalls();
+  drawWater();
+  drawSpikes();
+  drawGems();
+  drawCrocs();
+  drawSnakes();
+  drawPat();
+  drawParticles();
+  drawPopups();
+  ctx.restore();
+  drawVignette();
+}// --- FLOW ---
+function levelTime() { return Math.max(50, 100 - 15 * (loopN - 1)); }
+
+function updateTimer(dt) {
+  timeLeft -= dt / 1000;
+  if (timeLeft <= 10) {
+    const s = Math.ceil(timeLeft);
+    if (s !== lastTickSec && s > 0) { lastTickSec = s; playSound('timer_tick'); }
+  }
+  if (timeLeft <= 0) {
+    lives--;
+    if (lives <= 0) { gameOver(); return; }
+    // respawn at level start with fresh timer
+    checkpointX = 40;
+    pat.x = 40; pat.y = GROUND() - 30;
+    pat.vx = 0; pat.vy = 0;
+    pat.state = 'idle';
+    pat.onGround = true;
+    pat.invuln = 2000;
+    pat.hangVine = null;
+    camX = 0;
+    timeLeft = levelTime();
+    lastTickSec = -1;
+    addPopup(pat.x + 10, pat.y - 10, 'TIME!', '#ef9a9a');
+    updateHUD();
+  }
+}
+
+function completeLevel() {
+  if (gameState !== 'PLAYING') return;
+  if (level === 3) {
+    // authentic 2600 kill screen: the frame freezes, no jingle
+    gameState = 'KILL';
+    if (score > hiScore) { hiScore = score; localStorage.setItem('pitfall_hi', String(hiScore)); }
+    showMsg('<h2 class="c-yellow">KILL SCREEN</h2><p class="c-white" style="letter-spacing:3px;">CREDIT TO PLAYER ONE</p><p class="c-yellow" style="font-size:18px;margin:10px 0;">SCORE: ' + score + '</p><p>HI: ' + hiScore + '</p><p style="margin-top:14px;">Press <span class="c-yellow">ENTER</span> to play again</p>');
+    updateHUD();
+    return;
+  }
+  gameState = 'LEVELCOMPLETE';
+  const bonus = 500 + Math.max(0, Math.floor(timeLeft)) * 10;
+  score += bonus;
+  lvlDoneT = 1500;
+  playSound('level_jingle');
+  showMsg('<h2>LEVEL ' + level + ' CLEAR!</h2><p class="c-yellow">+' + bonus + '</p><p>Bonus: 500 + ' + Math.max(0, Math.floor(timeLeft)) + 's x 10</p>');
+  updateHUD();
+}
+
+function nextLevel() {
+  level++;
+  if (level > 3) { level = 1; loopN++; }
+  timeLeft = levelTime();
+  lastTickSec = -1;
+  loadLevel(level);
+  gameState = 'PLAYING';
+  goT = 1200;
+  hideMsg();
+  updateHUD();
+}
+
+function gameOver() {
+  gameState = 'GAMEOVER';
+  if (score > hiScore) {
+    hiScore = score;
+    localStorage.setItem('pitfall_hi', String(hiScore));
+  }
+  showMsg('<h2 class="c-red">GAME OVER</h2><p class="c-white" style="font-size:18px;margin:10px 0;">SCORE: ' + score + '</p><p class="c-yellow">HI: ' + hiScore + '</p><p style="margin-top:14px;">Press <span class="c-yellow">ENTER</span> to play again</p>');
+  updateHUD();
+}
+
+function updateHUD() {
+  const e = id => document.getElementById(id);
+  e('uScore').textContent = 'SCORE: ' + score;
+  e('uHi').textContent = 'HI: ' + hiScore;
+  e('uGems').textContent = 'GEMS: ' + gems.filter(g => g.taken).length + '/' + gems.length;
+  e('uTime').textContent = 'TIME: ' + Math.max(0, Math.ceil(timeLeft));
+  e('uLives').textContent = 'LIVES: ' + Math.max(0, lives);
+}
+
+function showMsg(html) {
+  document.getElementById('msgBox').innerHTML = html;
+  document.getElementById('overlay').style.display = 'flex';
+}
+
+function hideMsg() {
+  document.getElementById('overlay').style.display = 'none';
+}// --- AUDIO ---
+let actx = null;
+function ensureAudio() {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+  } catch (e) {}
+}
+
+function tone(freq, dur, type, vol, slideTo) {
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator();
+  const g = actx.createGain();
+  o.type = type || 'square';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  g.gain.setValueAtTime(vol || 0.08, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(t0); o.stop(t0 + dur);
+}
+
+function playSound(name) {
+  try {
+    if (!actx || actx.state !== 'running') return;
+    switch (name) {
+      case 'jump': tone(300, 0.15, 'square', 0.06, 600); break;
+      case 'gem': tone(880, 0.08, 'square', 0.07); setTimeout(() => tone(1320, 0.12, 'square', 0.07), 70); break;
+      case 'death_fall': tone(400, 0.5, 'sawtooth', 0.08, 80); break;
+      case 'death_splash': tone(200, 0.3, 'sine', 0.1, 60); break;
+      case 'croc_snap': tone(150, 0.12, 'square', 0.1, 60); break;
+      case 'snake_hiss': tone(1200, 0.15, 'sawtooth', 0.04, 400); break;
+      case 'level_jingle': [523, 659, 784, 1047].forEach((fq, i) => setTimeout(() => tone(fq, 0.15, 'square', 0.07), i * 120)); break;
+      case 'extra_life': [784, 988, 1175, 1568].forEach((fq, i) => setTimeout(() => tone(fq, 0.12, 'triangle', 0.08), i * 90)); break;
+      case 'timer_tick': tone(1000, 0.05, 'square', 0.05); break;
+    }
+  } catch (e) {}
+}
+
+// --- MAIN LOOP ---
+function update(dt, f) {
+  goT = Math.max(0, goT - dt);
+  dmgFlash = Math.max(0, dmgFlash - dt);
+  if (gameState === 'PLAYING') {
+    updatePat(dt, f);
+    updateGems(f);
+    updateCrocs(dt, f);
+    updateSnakes(dt, f);
+    updateVines(dt, f);
+    updateWorld(dt, f);
+    updateTimer(dt);
+  } else if (gameState === 'LEVELCOMPLETE') {
+    updateWorld(dt, f);
+    lvlDoneT -= dt;
+    if (lvlDoneT <= 0) nextLevel();
+  }
+  updateHUD();
+}
+
+let lastTs = 0;
+function loop(ts) {
+  const dt = Math.max(0, Math.min(50, ts - lastTs));
+  lastTs = ts;
+  const f = dt / 16.667;
+  if (gameState !== 'KILL') tGlobal += dt; // kill screen: freeze time (authentic 2600)
+  update(dt, f);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+updateHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
