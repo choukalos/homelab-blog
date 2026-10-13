@@ -70,9 +70,17 @@
       "title": "Pitfall!",
       "company": "Atari",
       "year": "1982",
-      "description": "Atari's 1982 jungle platformer, designed by Chris Crawford, became one of the best-selling video games of all time. Pat races across a circular world of connected screens, leaping crocodiles, dodging venomous snakes and spikes, and swinging from vines — with underground tunnel shortcuts you drop into and jump back out of. Collect all 10 gems before the 20-minute timer runs out; clear the final level and you get the abrupt 'kill screen' ending that made the 2600 version famous.",
+      "description": "Atari's 1982 jungle platformer, designed by Chris Crawford, became one of the best-selling video games of all time. Pat races across a circular world of connected screens, leaping crocodiles, dodging venomous snakes and spikes, and swinging from vines \u2014 with underground tunnel shortcuts you drop into and jump back out of. Collect all 10 gems before the 20-minute timer runs out; clear the final level and you get the abrupt 'kill screen' ending that made the 2600 version famous.",
       "gameFile": "pitfall.html",
       "screenshot": "pitfall.png"
+    },
+    {
+      "title": "Kung Fu Master",
+      "company": "Irem",
+      "year": "1984",
+      "description": "Kung Fu Master (1984) was Irem's landmark side-view beat-'em-up and one of the genre's first \u2014 a lone martial artist in a white gi fights through waves of thugs and a boss to defend a temple. This browser version is a loving tribute to that classic: a scrolling hallway you battle your way down, with themed levels cycling through Temple, Dojo, Courtyard, Night Street, and Mountain Path. Punch and kick green and red brawlers, keep your distance from the rock throwers and nunchaku fighters, and take down the boss at the far end of each round. It's close to the original in spirit and mechanics, but not a pixel-perfect replica. Endless rounds with rising difficulty and a persistent hi-score.",
+      "gameFile": "kungfu.html",
+      "screenshot": "kungfu.png"
     }
   ]
 }
