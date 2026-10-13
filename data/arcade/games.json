@@ -65,6 +65,14 @@
       "description": "A first-person zombie survival shooter rendered in real-time 3D with Three.js. Defend a fog-drenched downtown block against endless waves of the undead: walkers, sprinting runners, and hulking brutes. Five weapons from a sidearm to a bolt-action sniper, glowing ammo and medkit drops, headshot bonuses, and a big payout for every wave you clear. Fully self-contained in a single HTML file.",
       "gameFile": "zombie-city.html",
       "screenshot": "zombie-city.png"
+    },
+    {
+      "title": "Pitfall!",
+      "company": "Atari",
+      "year": "1982",
+      "description": "Atari's 1982 jungle platformer, designed by Chris Crawford, became one of the best-selling video games of all time. Pat races across a circular world of connected screens, leaping crocodiles, dodging venomous snakes and spikes, and swinging from vines — with underground tunnel shortcuts you drop into and jump back out of. Collect all 10 gems before the 20-minute timer runs out; clear the final level and you get the abrupt 'kill screen' ending that made the 2600 version famous.",
+      "gameFile": "pitfall.html",
+      "screenshot": "pitfall.png"
     }
   ]
 }
