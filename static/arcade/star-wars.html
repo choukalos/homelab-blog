@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STAR WARS — Trench Run</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Courier New',monospace;}
+canvas{display:block;}
+#crt{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.12) 0px,rgba(0,0,0,0.12) 1px,transparent 1px,transparent 3px);}
+#crt::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.45) 100%);}
+#hud{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:16px;z-index:5;color:#ff8c1a;font-size:13px;font-weight:bold;text-shadow:0 0 10px #ff5500;letter-spacing:1px;}
+#hud span{background:rgba(10,4,0,0.7);padding:5px 12px;border-radius:4px;}
+#uTorps{color:#4fd0ff;text-shadow:0 0 8px #4fd0ff;}
+#uLives{color:#ff5533;text-shadow:0 0 8px #ff5533;}
+#uRun{color:#0fa;text-shadow:0 0 8px #0fa;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;z-index:20;pointer-events:none;}
+#overlay>div{background:rgba(8,4,0,0.94);border:2px solid #ff8c1a;border-radius:8px;padding:32px 48px;text-align:center;color:#ffcf9a;text-shadow:0 0 8px #ff8c1a;max-width:580px;box-shadow:0 0 60px rgba(255,140,26,0.14);}
+#overlay h2{font-size:34px;margin-bottom:4px;letter-spacing:6px;color:#ff8c1a;}
+#overlay h3{font-size:15px;margin:12px 0 6px;color:#ff8c1a;letter-spacing:2px;}
+#overlay p{font-size:13px;margin:4px 0;color:#d8c8b8;line-height:1.5;}
+.c-yellow{color:#ff0!important;text-shadow:0 0 6px #ff0!important;}
+.c-green{color:#0f0!important;}
+.c-red{color:#f44!important;text-shadow:0 0 6px #f44!important;}
+.c-cyan{color:#0fa!important;}
+.c-amber{color:#fa0!important;}
+.c-white{color:#fff!important;}
+</style>
+</head><body>
+<div id="crt"></div>
+<div id="hud">
+<span id="uScore">SCORE: 0</span>
+<span id="uHi">HI: 0</span>
+<span id="uRun">RUN 1</span>
+<span id="uTorps">TORPS: 6</span>
+<span id="uLives">LIVES: 3</span>
+</div>
+<canvas id="c"></canvas>
+<div id="overlay"><div id="msgBox">
+<h2>STAR WARS</h2>
+<p class="c-amber" style="font-size:15px;margin:4px 0;">TRENCH RUN</p>
+<h3>THE MISSION</h3>
+<p>You are a Rebel X-wing in the Death Star's surface trench. Fly down the corridor, dodge the <span class="c-red">laser fire</span> from TIE fighters and wall turrets, and fire your <span class="c-cyan">proton torpedoes</span> at the <span class="c-amber">thermal exhaust ports</span>. Destroy enough ports to expose the core — then blow it up.</p>
+<h3>CONTROLS</h3>
+<p><span class="c-yellow">ARROWS / W A S D</span> Aim (move crosshair)</p>
+<p><span class="c-yellow">SPACE / X</span> Fire torpedo</p>
+<p><span class="c-yellow">P</span> Pause</p>
+<p style="margin-top:14px;">Press <span class="c-yellow">SPACE</span> to start</p>
+</div></div><script>// --- CORE ---
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');
+function resize(){canvas.width=Math.min(window.innerWidth-100,900);canvas.height=Math.min(window.innerHeight-20,680);canvas.width=Math.max(500,canvas.width);canvas.height=Math.max(420,canvas.height);}
+resize();window.addEventListener('resize',resize);
+window.addEventListener('keydown',e=>{K[e.code]=true;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();});
+window.addEventListener('keyup',e=>{K[e.code]=false;});
+
+// --- AUDIO (procedural WebAudio) ---
+let audioCtx;
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}
+function playSound(type){ensureAudio();const ac=audioCtx,now=ac.currentTime;try{
+function osc(wave,f0,f1,dur,vol,delay){delay=delay||0;const o=ac.createOscillator(),g=ac.createGain();o.type=wave;o.frequency.setValueAtTime(f0,now+delay);if(f1&&f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,now+delay+dur);g.gain.setValueAtTime(vol,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+dur);o.connect(g).connect(ac.destination);o.start(now+delay);o.stop(now+delay+dur);}
+function noise(dur,f0,f1,vol){const buf=ac.createBuffer(1,Math.floor(ac.sampleRate*dur),ac.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.6);const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();s.buffer=buf;f.type='lowpass';f.frequency.setValueAtTime(f0,now);f.frequency.exponentialRampToValueAtTime(f1,now+dur);g.gain.setValueAtTime(vol,now);g.gain.exponentialRampToValueAtTime(0.001,now+dur);s.connect(f).connect(g).connect(ac.destination);s.start(now);s.stop(now+dur);}
+switch(type){
+case 'torp':osc('sawtooth',220,900,0.18,0.12);noise(0.14,1600,500,0.06);break;
+case 'laser':osc('sawtooth',1400,300,0.14,0.07);break;
+case 'hit':osc('square',700,180,0.12,0.12);noise(0.18,900,200,0.1);break;
+case 'bigHit':noise(0.5,1200,80,0.28);osc('sawtooth',400,50,0.5,0.18);break;
+case 'hurt':osc('sawtooth',500,90,0.3,0.18);noise(0.2,1000,200,0.12);break;
+case 'die':osc('sawtooth',400,50,0.6,0.2);noise(0.5,800,60,0.18);break;
+case 'core':osc('square',330,330,0.1,0.14);osc('square',494,494,0.12,0.14,0.1);osc('square',659,659,0.14,0.14,0.2);break;
+case 'clear':[523,659,784,1047].forEach((f,i)=>osc('square',f,f,0.1,0.1,i*0.12));break;
+case 'extraLife':[523,784,1047].forEach((f,i)=>osc('sine',f,f,0.1,0.14,i*0.1));break;
+case 'over':[400,350,300,200].forEach((f,i)=>osc('sawtooth',f,f,0.15,0.14,i*0.18));break;
+}}catch(e){}}
+
+// --- CONSTANTS & HELPERS ---
+const W=()=>canvas.width;const H=()=>canvas.height;const PI2=Math.PI*2;
+function R(a,b){return a+Math.random()*(b-a);}
+function C(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function L(a,b,t){return a+(b-a)*t;}
+// Perspective: camera looks down +Z. Project world (x,y,z) to screen.
+const WALL_X=240,FLOOR_Y=210,CEIL_Y=190;
+const Z_NEAR=28,Z_FAR=4200;
+function horizonY(){return H()*0.42;}
+function SC(){return H()*1.15;}
+function project(x,y,z){const f=SC()/z;return{x:W()/2+x*f,y:horizonY()+y*f,s:f};}
+function trenchCorners(z){const f=SC()/z,lx=W()/2-WALL_X*f,rx=W()/2+WALL_X*f,ty=horizonY()-CEIL_Y*f,by=horizonY()+FLOOR_Y*f;return{tl:{x:lx,y:ty},tr:{x:rx,y:ty},bl:{x:lx,y:by},br:{x:rx,y:by}};}
+const K={};
+const kL=()=>K.ArrowLeft||K.KeyA,kR=()=>K.ArrowRight||K.KeyD,kU=()=>K.ArrowUp||K.KeyW,kD=()=>K.ArrowDown||K.KeyS;
+const kFire=()=>K.Space||K.KeyX;
+const kStart=()=>K.Space||K.Enter;
+
+// --- STATE ---
+const ST={TITLE:0,READY:1,PLAYING:2,ROUND_CLEAR:3,PAUSED:4,GAMEOVER:5};
+let state=ST.TITLE,t=0;
+let score=0,hiScore=parseInt(localStorage.getItem('sw_hi')||'0');
+let round=1,lives=3,nextLifeAt=15000;
+let torps=6,maxTorps=6,torpRegen=0;
+let portsDestroyed=0,portQuota=4;
+let coreOpen=false,core=null;
+let dist=0,speed=6;
+let invuln=0;
+let shakeT=0,shakeI=0,flash=0;
+let banner={txt:'',sub:'',t:0,m:0,col:'#ff8c1a'};
+let ties=[],turrets=[],ports=[],lasers=[],torpedoes=[],particles=[],popups=[];
+let crosshair={x:0,y:0};
+let fireHeld=false;
+
+function initCrosshair(){crosshair.x=W()/2;crosshair.y=H()*0.62;}
+initCrosshair();
+function addParticles(x,y,n,cols,sp){for(let i=0;i<n;i++){const a=R(0,PI2),s=R(0.5,sp);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:R(1.5,4),life:R(18,40),max:40,col:cols[Math.floor(R(0,cols.length))]});}}
+function addPopup(x,y,txt,col){popups.push({x,y,txt,col:col||'#ff0',t:45});}
+function shake(n,i){shakeT=Math.max(shakeT,n);shakeI=Math.max(shakeI,i);}
+function checkHi(){if(score>hiScore){hiScore=score;localStorage.setItem('sw_hi',String(hiScore));}}
+function checkExtraLife(){if(score>=nextLifeAt&&lives<6){lives++;nextLifeAt+=15000;playSound('extraLife');addPopup(W()/2,H()*0.5,'EXTRA LIFE!','#0f0');}}// --- SPRITES ---
+function poly(a,b,c,d,fill){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.closePath();ctx.fillStyle=fill;ctx.fill();}
+function line(a,b){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+
+function drawTrench(){
+const w=W(),h=H();
+const near=trenchCorners(Z_NEAR*0.9),far=trenchCorners(Z_FAR);
+// background (dark space beyond the trench mouth)
+ctx.fillStyle='#04050a';ctx.fillRect(0,0,w,h);
+// ceiling
+poly(near.tl,near.tr,far.tr,far.tl,'#15161c');
+// floor
+poly(near.bl,near.br,far.br,far.bl,'#1c2018');
+// left wall
+poly(near.tl,near.bl,far.bl,far.tl,'#23242c');
+// right wall
+poly(near.tr,near.br,far.br,far.tr,'#20212a');
+// scrolling rungs (panel lines)
+const spacing=300;
+const k0=Math.floor((dist+Z_NEAR)/spacing),k1=Math.ceil((dist+Z_FAR)/spacing);
+ctx.lineWidth=1;
+for(let k=k0;k<=k1;k++){
+const z=k*spacing-dist;
+if(z<Z_NEAR||z>Z_FAR)continue;
+const c=trenchCorners(z);
+const a=C(1-(z-Z_NEAR)/(Z_FAR-Z_NEAR),0,1);
+ctx.strokeStyle='rgba(130,140,150,'+(0.03+0.14*a).toFixed(3)+')';
+line(c.tl,c.tr);line(c.bl,c.br);line(c.tl,c.bl);line(c.tr,c.br);
+// floor guide line
+ctx.strokeStyle='rgba(90,120,90,'+(0.04+0.1*a).toFixed(3)+')';
+const mid={x:(c.bl.x+c.br.x)/2,y:(c.bl.y+c.br.y)/2};
+line({x:mid.x,y:mid.y-6*a},{x:mid.x,y:mid.y+6*a});
+}
+// depth darkening toward the vanishing point
+const vg=ctx.createRadialGradient(w/2,horizonY(),10,w/2,horizonY(),w*0.62);
+vg.addColorStop(0,'rgba(0,0,0,0.92)');vg.addColorStop(0.5,'rgba(0,0,0,0.35)');vg.addColorStop(1,'rgba(0,0,0,0)');
+ctx.fillStyle=vg;ctx.fillRect(0,0,w,h);
+drawDeathStar();
+}
+
+function drawDeathStar(){
+const w=W(),h=H();
+const cx=w/2,cy=horizonY()+8;
+// progress toward the end of the trench (0..1)
+const prog=C(portsDestroyed/portQuota,0,1);
+const r=26+prog*46;
+const g=ctx.createRadialGradient(cx-r*0.35,cy-r*0.4,r*0.1,cx,cy,r);
+g.addColorStop(0,'#4a4c56');g.addColorStop(0.7,'#2a2c34');g.addColorStop(1,'#14151c');
+ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,r,0,PI2);ctx.fill();
+// surface paneling
+ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1;
+for(let i=1;i<4;i++){ctx.beginPath();ctx.arc(cx,cy,r*i/4,0,PI2);ctx.stroke();}
+ctx.beginPath();ctx.moveTo(cx-r,cy);ctx.lineTo(cx+r,cy);ctx.moveTo(cx,cy-r);ctx.lineTo(cx,cy+r);ctx.stroke();
+// superlaser dish (glows when the core is open)
+if(coreOpen){
+const dr=r*0.34;
+ctx.save();ctx.shadowColor='#ff2200';ctx.shadowBlur=24;
+ctx.fillStyle='#1a0808';ctx.beginPath();ctx.arc(cx,cy,dr,0,PI2);ctx.fill();
+ctx.fillStyle='#ff3300';ctx.beginPath();ctx.arc(cx,cy,dr*0.55,0,PI2);ctx.fill();
+ctx.restore();
+}
+}
+
+function drawTie(o){
+const sp=project(o.x,o.y,o.z);
+if(o.z<Z_NEAR*1.25)return;
+const s=30*(SC()/o.z)*0.5;
+ctx.save();ctx.translate(sp.x,sp.y);
+const flash=o.flash>0;
+const body=flash?'#fff':'#3a3c46',edge=flash?'#fff':'#5a5c68',glass=flash?'#fff':'#9fb4c8';
+// wings (hexagonal panels)
+ctx.fillStyle=body;
+ctx.beginPath();ctx.moveTo(-s*0.35,-s*0.5);ctx.lineTo(-s*1.3,-s*0.75);ctx.lineTo(-s*1.75,0);ctx.lineTo(-s*1.3,s*0.75);ctx.lineTo(-s*0.35,s*0.5);ctx.closePath();ctx.fill();
+ctx.beginPath();ctx.moveTo(s*0.35,-s*0.5);ctx.lineTo(s*1.3,-s*0.75);ctx.lineTo(s*1.75,0);ctx.lineTo(s*1.3,s*0.75);ctx.lineTo(s*0.35,s*0.5);ctx.closePath();ctx.fill();
+// wing struts
+ctx.strokeStyle=edge;ctx.lineWidth=Math.max(1,s*0.09);
+ctx.beginPath();ctx.moveTo(-s*0.3,0);ctx.lineTo(-s*1.55,0);ctx.moveTo(s*0.3,0);ctx.lineTo(s*1.55,0);ctx.stroke();
+// cockpit
+ctx.fillStyle=body;ctx.beginPath();ctx.arc(0,0,s*0.42,0,PI2);ctx.fill();
+ctx.fillStyle=glass;ctx.beginPath();ctx.arc(0,0,s*0.24,0,PI2);ctx.fill();
+ctx.restore();
+}
+
+function drawTurret(o){
+const sp=project(o.x,o.y,o.z);
+if(o.z<Z_NEAR*1.25)return;
+const s=24*(SC()/o.z)*0.5;
+const side=o.side; // -1 left, 1 right
+ctx.save();ctx.translate(sp.x,sp.y);
+const flash=o.flash>0;
+ctx.fillStyle=flash?'#fff':'#4a4c56';
+ctx.fillRect(-s*0.5,-s*0.5,s,s*0.9);
+// dish
+ctx.fillStyle=flash?'#fff':'#6a6c78';
+ctx.beginPath();ctx.ellipse(side*s*0.4,0,s*0.5,s*0.32,0,0,PI2);ctx.fill();
+ctx.fillStyle=flash?'#fff':'#ff3300';
+ctx.beginPath();ctx.arc(side*s*0.55,0,s*0.16,0,PI2);ctx.fill();
+ctx.restore();
+}
+
+function drawPort(o){
+const sp=project(o.x,o.y,o.z);
+if(o.z<Z_NEAR*1.25)return;
+const s=9*(SC()/o.z)*0.5;
+const pulse=0.6+0.4*Math.sin(t*0.15+o.x);
+ctx.save();
+ctx.shadowColor='#ff6a00';ctx.shadowBlur=14*pulse;
+ctx.fillStyle='rgba(255,120,20,'+(0.5+0.4*pulse).toFixed(2)+')';
+ctx.beginPath();ctx.arc(sp.x,sp.y,s,0,PI2);ctx.fill();
+ctx.shadowBlur=0;
+ctx.fillStyle='#ffd0a0';ctx.beginPath();ctx.arc(sp.x,sp.y,s*0.5,0,PI2);ctx.fill();
+ctx.restore();
+}
+
+function drawLaser(l){
+ctx.save();
+ctx.globalAlpha=C(1-l.prog*0.25,0.4,1);
+ctx.shadowColor='#ff2200';ctx.shadowBlur=10;
+ctx.fillStyle='#ff4422';
+ctx.beginPath();ctx.arc(l.x,l.y,l.size,0,PI2);ctx.fill();
+ctx.shadowBlur=0;
+ctx.fillStyle='#ffd0c0';
+ctx.beginPath();ctx.arc(l.x,l.y,l.size*0.4,0,PI2);ctx.fill();
+// tail
+ctx.strokeStyle='rgba(255,60,30,0.5)';ctx.lineWidth=l.size*0.6;
+ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.lineTo(l.px||l.x,l.py||l.y);ctx.stroke();
+ctx.restore();
+}
+
+function drawTorpedo(tp){
+ctx.save();
+ctx.shadowColor='#4fd0ff';ctx.shadowBlur=12;
+ctx.fillStyle='#bfefff';
+ctx.beginPath();ctx.arc(tp.x,tp.y,3.5,0,PI2);ctx.fill();
+ctx.shadowBlur=0;
+ctx.strokeStyle='rgba(80,200,255,0.6)';ctx.lineWidth=2;
+ctx.beginPath();ctx.moveTo(tp.x,tp.y);ctx.lineTo(tp.px||tp.x,tp.py||tp.y);ctx.stroke();
+ctx.restore();
+}
+
+function drawCockpit(){
+const w=W(),h=H();
+// dark cockpit frame at the bottom
+ctx.fillStyle='#0a0a0c';
+ctx.beginPath();
+ctx.moveTo(0,h);ctx.lineTo(0,h*0.86);
+ctx.quadraticCurveTo(w*0.5,h*0.94,w,h*0.86);
+ctx.lineTo(w,h);ctx.closePath();ctx.fill();
+// gun barrel
+ctx.strokeStyle='#2a2a30';ctx.lineWidth=10;
+ctx.beginPath();ctx.moveTo(w/2,h);ctx.lineTo(w/2,h*0.9);ctx.stroke();
+ctx.strokeStyle='#3a3a44';ctx.lineWidth=4;
+ctx.beginPath();ctx.moveTo(w/2,h);ctx.lineTo(w/2,h*0.9);ctx.stroke();
+// crosshair reticle
+const cx=crosshair.x,cy=crosshair.y;
+ctx.save();
+ctx.strokeStyle=torps>0?'#4fd0ff':'#666';
+ctx.shadowColor='#4fd0ff';ctx.shadowBlur=8;ctx.lineWidth=1.5;
+ctx.beginPath();ctx.arc(cx,cy,14,0,PI2);ctx.stroke();
+ctx.beginPath();
+ctx.moveTo(cx-22,cy);ctx.lineTo(cx-8,cy);ctx.moveTo(cx+8,cy);ctx.lineTo(cx+22,cy);
+ctx.moveTo(cx,cy-22);ctx.lineTo(cx,cy-8);ctx.moveTo(cx,cy+8);ctx.lineTo(cx,cy+22);
+ctx.stroke();
+ctx.shadowBlur=0;
+ctx.fillStyle=torps>0?'#4fd0ff':'#666';
+ctx.beginPath();ctx.arc(cx,cy,2,0,PI2);ctx.fill();
+ctx.restore();
+// low-torpedo warning
+if(torps<=1){ctx.fillStyle='#ff3333';ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('LOW TORPS',w/2,h*0.86-6);}
+}
+
+function drawHud(){
+// torpedo pips
+const x=16,y=40,gap=14;
+ctx.fillStyle='#4fd0ff';ctx.font='bold 9px Courier New';ctx.textAlign='left';
+ctx.fillText('TORPS',x,y-6);
+for(let i=0;i<maxTorps;i++){
+ctx.fillStyle=i<torps?'#4fd0ff':'rgba(80,120,160,0.3)';
+ctx.fillRect(x+i*gap,y,9,12);
+}
+// port progress
+const py=64;
+ctx.fillStyle='#ff8c1a';ctx.font='bold 9px Courier New';
+ctx.fillText('PORTS '+portsDestroyed+'/'+portQuota,x,py-6);
+for(let i=0;i<portQuota;i++){
+ctx.fillStyle=i<portsDestroyed?'#ff8c1a':'rgba(255,140,26,0.25)';
+ctx.beginPath();ctx.arc(x+i*14+5,py+6,4,0,PI2);ctx.fill();
+}
+}
+
+function drawBanner(){
+if(banner.t<=0)return;
+const w=W(),h=H();
+const a=Math.min(1,banner.t/20,(banner.m-banner.t)/20);
+ctx.save();ctx.globalAlpha=C(a,0,1);
+ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,h*0.34,w,h*0.3);
+ctx.textAlign='center';
+ctx.fillStyle=banner.col||'#ff8c1a';
+ctx.shadowColor=banner.col||'#ff8c1a';ctx.shadowBlur=24;
+ctx.font='bold 42px Courier New';
+ctx.fillText(banner.txt,w/2,h*0.48);
+if(banner.sub){ctx.font='bold 17px Courier New';ctx.fillStyle='#e8c8b8';ctx.shadowBlur=8;ctx.fillText(banner.sub,w/2,h*0.48+34);}
+ctx.shadowBlur=0;ctx.restore();
+}// --- COMBAT ---
+function spawnTie(){
+const side=R(0,1)>0.5?1:-1;
+const bx=side*R(60,WALL_X*0.6);
+ties.push({type:'tie',x:bx,baseX:bx,amp:R(30,90),phase:R(0,PI2),y:R(-CEIL_Y*0.7,FLOOR_Y*0.45),z:Z_FAR,cd:Math.floor(R(45,85)),flash:0,dead:false});
+}
+function spawnTurret(){
+const side=R(0,1)>0.5?1:-1;
+turrets.push({type:'turret',x:side*WALL_X,side:side,y:R(-CEIL_Y*0.6,FLOOR_Y*0.5),z:Z_FAR,cd:Math.floor(R(35,65)),flash:0,dead:false});
+}
+function spawnPort(){
+const side=R(0,1)>0.5?1:-1;
+ports.push({type:'port',x:side*WALL_X,y:R(-CEIL_Y*0.7,FLOOR_Y*0.6),z:Z_FAR,flash:0,dead:false});
+}
+
+function fireLaser(o){
+const sp=project(o.x,o.y,o.z);
+lasers.push({sx:sp.x,sy:sp.y,tsx:crosshair.x,tsy:crosshair.y,x:sp.x,y:sp.y,px:sp.x,py:sp.y,prog:0,speed:0.026+R(0,0.012)+round*0.0012,size:2,dead:false});
+playSound('laser');
+}
+function fireTorpedo(){
+if(torps<1||state!==ST.PLAYING)return;
+torps--;
+const gx=W()/2,gy=H()*0.9;
+torpedoes.push({sx:gx,sy:gy,tx:crosshair.x,ty:crosshair.y,x:gx,y:gy,px:gx,py:gy,prog:0,speed:0.13,dead:false});
+playSound('torp');
+}
+
+function torpedoHit(tp){
+const hitR=42;
+let best=null,bestZ=Infinity;
+const consider=(o,z)=>{
+const sp=project(o.x,o.y,o.z);
+if(Math.hypot(sp.x-tp.tx,sp.y-tp.ty)<hitR&&z<bestZ){best=o;bestZ=z;}
+};
+if(coreOpen&&core)consider(core,core.z);
+for(const o of ties)if(!o.dead)consider(o,o.z);
+for(const o of turrets)if(!o.dead)consider(o,o.z);
+for(const o of ports)if(!o.dead)consider(o,o.z);
+if(!best)return;
+if(best.type==='core')coreDestroyed();
+else if(best.type==='tie')destroyTie(best);
+else if(best.type==='turret')destroyTurret(best);
+else if(best.type==='port')destroyPort(best);
+}
+
+function destroyTie(o){
+o.dead=true;
+score+=100;checkHi();checkExtraLife();
+const sp=project(o.x,o.y,o.z);
+addParticles(sp.x,sp.y,14,['#f80','#f44','#ff0','#fff'],5);
+addPopup(sp.x,sp.y,'+100','#ff0');
+playSound('hit');shake(8,3);
+}
+function destroyTurret(o){
+o.dead=true;
+score+=200;checkHi();checkExtraLife();
+const sp=project(o.x,o.y,o.z);
+addParticles(sp.x,sp.y,14,['#f80','#f44','#ff0','#fff'],5);
+addPopup(sp.x,sp.y,'+200','#ff0');
+playSound('hit');shake(8,3);
+}
+function destroyPort(o){
+o.dead=true;
+portsDestroyed++;
+score+=1000;checkHi();checkExtraLife();
+const sp=project(o.x,o.y,o.z);
+addParticles(sp.x,sp.y,22,['#ff6a00','#ff0','#fff'],6);
+addPopup(sp.x,sp.y,'+1000','#ff8c1a');
+playSound('hit');shake(10,4);
+if(portsDestroyed>=portQuota&&!coreOpen)openCore();
+}
+function openCore(){
+coreOpen=true;
+core={type:'core',x:0,y:70,z:1700,size:60};
+banner={txt:'CORE EXPOSED',sub:'DESTROY IT!',t:110,m:110,col:'#ff2200'};
+playSound('core');shake(14,5);
+}
+function coreDestroyed(){
+score+=5000;checkHi();checkExtraLife();
+const sp=project(core.x,core.y,core.z);
+addParticles(sp.x,sp.y,70,['#ff2200','#ff6a00','#ff0','#fff'],10);
+addPopup(sp.x,sp.y,'+5000','#ff2200');
+playSound('bigHit');shake(26,9);flash=16;
+coreOpen=false;core=null;
+roundClear();
+}
+function hitPlayer(){
+if(invuln>0||state!==ST.PLAYING)return;
+lives--;
+invuln=110;
+playSound('hurt');shake(16,6);flash=8;
+addParticles(crosshair.x,crosshair.y,18,['#ff4422','#ff0','#fff'],6);
+if(lives<=0)gameOver();
+}
+
+// --- UPDATE OBJECTS ---
+function upObjects(){
+dist+=speed;
+// TIEs
+for(const o of ties){
+if(o.dead)continue;
+o.z-=speed;
+o.phase+=0.02;
+o.x=C(o.baseX+Math.sin(o.phase)*o.amp,-WALL_X*0.85,WALL_X*0.85);
+if(o.cd>0)o.cd--;
+if(o.cd<=0&&o.z<Z_FAR*0.72&&o.z>Z_NEAR*2.2){fireLaser(o);o.cd=Math.max(34,Math.floor(R(75,120))-round*3);}
+if(o.z<Z_NEAR)o.dead=true;
+}
+// turrets
+for(const o of turrets){
+if(o.dead)continue;
+o.z-=speed;
+if(o.cd>0)o.cd--;
+if(o.cd<=0&&o.z<Z_FAR*0.75&&o.z>Z_NEAR*2.2){fireLaser(o);o.cd=Math.max(26,Math.floor(R(45,80))-round*2);}
+if(o.z<Z_NEAR)o.dead=true;
+}
+// ports
+for(const o of ports){
+if(o.dead)continue;
+o.z-=speed;
+if(o.z<Z_NEAR)o.dead=true;
+}
+// core approaches slowly
+if(coreOpen&&core){core.z-=speed*0.3;if(core.z<820)core.z=820;}
+// lasers
+for(const l of lasers){
+l.prog+=l.speed;
+l.px=l.x;l.py=l.y;
+l.x=L(l.sx,l.tsx,l.prog);
+l.y=L(l.sy,l.tsy,l.prog);
+l.size=2+l.prog*7;
+if(l.prog>=1){
+if(Math.hypot(crosshair.x-l.tsx,crosshair.y-l.tsy)<20)hitPlayer();
+l.dead=true;
+}
+}
+// torpedoes
+for(const tp of torpedoes){
+tp.prog+=tp.speed;
+tp.px=tp.x;tp.py=tp.y;
+tp.x=L(tp.sx,tp.tx,tp.prog);
+tp.y=L(tp.sy,tp.ty,tp.prog);
+if(tp.prog>=1){torpedoHit(tp);tp.dead=true;}
+}
+ties=ties.filter(o=>!o.dead);
+turrets=turrets.filter(o=>!o.dead);
+ports=ports.filter(o=>!o.dead);
+lasers=lasers.filter(l=>!l.dead);
+torpedoes=torpedoes.filter(tp=>!tp.dead);
+}
+
+// --- SPAWNING (timers) ---
+let tieTimer=0,turretTimer=0,portTimer=0;
+function upSpawns(){
+tieTimer--;turretTimer--;portTimer--;
+const maxTies=Math.min(1+round,5);
+if(tieTimer<=0&&ties.length<maxTies){spawnTie();tieTimer=Math.max(26,Math.floor(R(70,110))-round*4);}
+if(turretTimer<=0&&turrets.length<Math.min(2+round,5)){spawnTurret();turretTimer=Math.max(40,Math.floor(R(120,180))-round*6);}
+if(portTimer<=0&&ports.length<6){spawnPort();portTimer=Math.floor(R(90,140));}
+}// --- ROUND FLOW ---
+function initGame(){
+score=0;round=1;lives=3;nextLifeAt=15000;
+torps=maxTorps;torpRegen=0;invuln=0;fireHeld=true;
+ties=[];turrets=[];ports=[];lasers=[];torpedoes=[];particles=[];popups=[];
+coreOpen=false;core=null;dist=0;speed=6;flash=0;
+initCrosshair();
+hideMsg();
+startRound();
+}
+function startRound(){
+ties=[];turrets=[];ports=[];lasers=[];torpedoes=[];
+coreOpen=false;core=null;
+portsDestroyed=0;
+portQuota=Math.min(3+round,7);
+speed=6+(round-1)*0.5;
+torps=maxTorps;torpRegen=0;invuln=60;
+tieTimer=0;turretTimer=0;portTimer=0;
+for(let i=0;i<4;i++)spawnPort();
+for(let i=0;i<2;i++)spawnTie();
+spawnTurret();
+banner={txt:'RUN '+round,sub:'GET READY',t:100,m:100,col:'#ff8c1a'};
+state=ST.READY;
+}
+function roundClear(){
+const bonus=1000+round*500;
+score+=bonus;checkHi();checkExtraLife();
+playSound('clear');
+banner={txt:'TRENCH CLEARED',sub:'BONUS +'+bonus,t:130,m:130,col:'#0fa'};
+state=ST.ROUND_CLEAR;
+}
+function gameOver(){
+state=ST.GAMEOVER;
+checkHi();
+playSound('over');
+showMsg(`<h2 class="c-red">GAME OVER</h2>
+<p>You reached <span class="c-yellow">RUN ${round}</span></p>
+<p>Score: <span class="c-yellow">${score}</span></p>
+<p>Hi-Score: <span class="c-amber">${hiScore}</span></p>
+<p style="margin-top:14px;">Press <span class="c-yellow">SPACE</span> to try again</p>`);
+}
+
+// --- HUD / OVERLAY ---
+function updateHud(){
+document.getElementById('uScore').textContent='SCORE: '+score;
+document.getElementById('uHi').textContent='HI: '+hiScore;
+document.getElementById('uRun').textContent='RUN '+round;
+document.getElementById('uTorps').textContent='TORPS: '+torps;
+document.getElementById('uLives').textContent='LIVES: '+Math.max(0,lives);
+}
+function showMsg(html){document.getElementById('msgBox').innerHTML=html;document.getElementById('overlay').style.display='flex';}
+function hideMsg(){document.getElementById('overlay').style.display='none';}
+
+// --- INPUT ---
+document.addEventListener('keydown',e=>{
+K[e.code]=true;
+if(['Space','Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyX','KeyP'].includes(e.code))e.preventDefault();
+if(e.code==='KeyP'&&(state===ST.PLAYING||state===ST.PAUSED)){
+if(state===ST.PLAYING){state=ST.PAUSED;showMsg(`<h2>PAUSED</h2><p>Press <span class="c-yellow">P</span> to resume</p>`);}
+else{state=ST.PLAYING;hideMsg();}
+}
+if(kStart()&&(state===ST.TITLE||state===ST.GAMEOVER)){
+ensureAudio();initGame();
+}
+});
+document.addEventListener('keyup',e=>{K[e.code]=false;});
+
+// --- MAIN LOOP ---
+function update(){
+t++;
+if(banner.t>0)banner.t--;
+if(flash>0)flash--;
+if(invuln>0)invuln--;
+if(state===ST.READY||state===ST.PLAYING){
+const mv=7;
+if(kL())crosshair.x-=mv;
+if(kR())crosshair.x+=mv;
+if(kU())crosshair.y-=mv;
+if(kD())crosshair.y+=mv;
+crosshair.x=C(crosshair.x,W()*0.12,W()*0.88);
+crosshair.y=C(crosshair.y,H()*0.14,H()*0.9);
+}
+if(state===ST.READY){
+if(banner.t<=0)state=ST.PLAYING;
+}else if(state===ST.ROUND_CLEAR){
+if(banner.t<=0){round++;startRound();}
+}else if(state===ST.PLAYING){
+if(kFire()&&!fireHeld)fireTorpedo();
+fireHeld=kFire();
+torpRegen++;
+if(torpRegen>=75&&torps<maxTorps){torps++;torpRegen=0;}
+upSpawns();
+upObjects();
+}
+for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.life--;}
+particles=particles.filter(p=>p.life>0);
+for(const p of popups){p.y-=0.8;p.t--;}
+popups=popups.filter(p=>p.t>0);
+if(shakeT>0)shakeT--;
+updateHud();
+}
+function draw(){
+const w=W(),h=H();
+ctx.save();
+if(shakeT>0)ctx.translate(R(-shakeI,shakeI),R(-shakeI,shakeI));
+drawTrench();
+if(state!==ST.TITLE){
+for(const o of ports)drawPort(o);
+for(const o of turrets)drawTurret(o);
+for(const o of ties)drawTie(o);
+if(coreOpen&&core){
+const sp=project(core.x,core.y,core.z);
+const s=core.size*(SC()/core.z);
+ctx.save();ctx.shadowColor='#ff2200';ctx.shadowBlur=30;
+const g=ctx.createRadialGradient(sp.x,sp.y,s*0.1,sp.x,sp.y,s);
+g.addColorStop(0,'#fff');g.addColorStop(0.4,'#ff6a00');g.addColorStop(1,'#ff2200');
+ctx.fillStyle=g;ctx.beginPath();ctx.arc(sp.x,sp.y,s,0,PI2);ctx.fill();
+ctx.restore();
+}
+for(const l of lasers)drawLaser(l);
+for(const tp of torpedoes)drawTorpedo(tp);
+for(const p of particles){ctx.globalAlpha=p.life/p.max;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,PI2);ctx.fill();}
+ctx.globalAlpha=1;
+ctx.font='bold 14px Courier New';ctx.textAlign='center';
+for(const p of popups){ctx.globalAlpha=Math.min(1,p.t/20);ctx.fillStyle=p.col;ctx.fillText(p.txt,p.x,p.y);}
+ctx.globalAlpha=1;
+}
+ctx.restore();
+if(state!==ST.TITLE)drawCockpit();
+if(state!==ST.TITLE)drawHud();
+if(flash>0){ctx.fillStyle='rgba(255,80,40,'+(flash/16*0.5).toFixed(2)+')';ctx.fillRect(0,0,w,h);}
+drawBanner();
+}
+function loop(){
+update();
+draw();
+requestAnimationFrame(loop);
+}
+loop();</script>
+</body>
+</html>

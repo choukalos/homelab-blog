@@ -89,6 +89,14 @@
       "description": "Double Dragon (1987) was Technos's landmark side-view beat-'em-up that defined the genre \u2014 a lone street fighter (Jimmy/Billy) punches and kicks his way through waves of thugs to rescue a hostage. This browser version is a loving tribute to that classic: fight right through four scrolling stages \u2014 Street, Alley, Rooftop, and Dojo \u2014 battling thugs, cops, and bikers, then take down the boss in the dojo. Fill the energy meter to unleash the Double Dragon 3-hit combo. It's close to the original in spirit and mechanics, but not a pixel-perfect replica. Endless rounds with rising difficulty and a persistent hi-score.",
       "gameFile": "double-dragon.html",
       "screenshot": "double-dragon.png"
+    },
+    {
+      "title": "Star Wars",
+      "company": "Midway",
+      "year": "1983",
+      "description": "Star Wars (1983) was Midway's landmark first-person shooter \u2014 you piloted an X-wing down the Death Star's surface trench in a cockpit view, dodging TIE-fighter laser fire and firing proton torpedoes at thermal exhaust ports. This browser version captures that classic feel: fly down a 3D-perspective trench from the cockpit, aim the crosshair, and blast thermal ports with your limited torpedo supply while dodging lasers from TIEs and wall turrets. Destroy enough ports to expose the Death Star's core, then blow it up to clear the run. Endless runs with rising difficulty and a persistent hi-score. It's close to the original in spirit and mechanics, but not a pixel-perfect replica.",
+      "gameFile": "star-wars.html",
+      "screenshot": "star-wars.png"
     }
   ]
 }
