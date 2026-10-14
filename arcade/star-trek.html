@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STAR TREK — Space Defense</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Courier New',monospace;}
+canvas{display:block;}
+#crt{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.1) 0px,rgba(0,0,0,0.1) 1px,transparent 1px,transparent 3px);}
+#crt::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.42) 100%);}
+#hud{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:16px;z-index:5;color:#4fd0ff;font-size:13px;font-weight:bold;text-shadow:0 0 10px #1a8cff;letter-spacing:1px;}
+#hud span{background:rgba(0,10,25,0.7);padding:5px 12px;border-radius:4px;}
+#uSector{color:#ffd23f;text-shadow:0 0 8px #ffd23f;}
+#uLives{color:#0fa;text-shadow:0 0 8px #0fa;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;z-index:20;pointer-events:none;}
+#overlay>div{background:rgba(0,8,20,0.94);border:2px solid #4fd0ff;border-radius:8px;padding:32px 48px;text-align:center;color:#c8e8ff;text-shadow:0 0 8px #1a8cff;max-width:580px;box-shadow:0 0 60px rgba(26,140,255,0.16);}
+#overlay h2{font-size:34px;margin-bottom:4px;letter-spacing:6px;color:#4fd0ff;text-shadow:0 0 14px #1a8cff;}
+#overlay h3{font-size:15px;margin:12px 0 6px;color:#ffd23f;letter-spacing:2px;}
+#overlay p{font-size:13px;margin:4px 0;color:#b8d8e8;line-height:1.5;}
+.c-yellow{color:#ff0!important;text-shadow:0 0 6px #ff0!important;}
+.c-green{color:#0f0!important;}
+.c-red{color:#f44!important;text-shadow:0 0 6px #f44!important;}
+.c-cyan{color:#0fa!important;}
+.c-amber{color:#fa0!important;}
+.c-white{color:#fff!important;}
+</style>
+</head><body>
+<div id="crt"></div>
+<div id="hud">
+<span id="uScore">SCORE: 0</span>
+<span id="uHi">HI: 0</span>
+<span id="uSector">SECTOR 1</span>
+<span id="uPhaser">PHASER: 6</span>
+<span id="uLives">LIVES: 3</span>
+</div>
+<canvas id="c"></canvas>
+<div id="overlay"><div id="msgBox">
+<h2>STAR TREK</h2>
+<p class="c-amber" style="font-size:15px;margin:4px 0;">SPACE DEFENSE</p>
+<h3>THE MISSION</h3>
+<p>You command the <span class="c-cyan">Enterprise</span> in a sector of Klingon space. Maneuver with the sticks and fire your <span class="c-yellow">phasers</span> — but the phaser charge is limited and only recharges over time, so don't waste shots. Blast the <span class="c-red">Klingon fighters and cruisers</span>, dodge their return fire, and destroy the <span class="c-red">Klingon base</span> to warp to the next sector.</p>
+<h3>CONTROLS</h3>
+<p><span class="c-yellow">ARROWS / W A S D</span> Maneuver (8 directions)</p>
+<p><span class="c-yellow">SPACE / X</span> Fire phaser</p>
+<p><span class="c-yellow">P</span> Pause</p>
+<p style="margin-top:14px;">Press <span class="c-yellow">SPACE</span> to start</p>
+</div></div><script>// --- CORE ---
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');
+function resize(){canvas.width=Math.min(window.innerWidth-100,900);canvas.height=Math.min(window.innerHeight-20,680);canvas.width=Math.max(500,canvas.width);canvas.height=Math.max(420,canvas.height);}
+resize();window.addEventListener('resize',resize);
+window.addEventListener('keydown',e=>{K[e.code]=true;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();});
+window.addEventListener('keyup',e=>{K[e.code]=false;});
+
+// --- AUDIO (procedural WebAudio) ---
+let audioCtx;
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}
+function playSound(type){ensureAudio();const ac=audioCtx,now=ac.currentTime;try{
+function osc(wave,f0,f1,dur,vol,delay){delay=delay||0;const o=ac.createOscillator(),g=ac.createGain();o.type=wave;o.frequency.setValueAtTime(f0,now+delay);if(f1&&f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,now+delay+dur);g.gain.setValueAtTime(vol,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+dur);o.connect(g).connect(ac.destination);o.start(now+delay);o.stop(now+delay+dur);}
+function noise(dur,f0,f1,vol){const buf=ac.createBuffer(1,Math.floor(ac.sampleRate*dur),ac.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.6);const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();s.buffer=buf;f.type='lowpass';f.frequency.setValueAtTime(f0,now);f.frequency.exponentialRampToValueAtTime(f1,now+dur);g.gain.setValueAtTime(vol,now);g.gain.exponentialRampToValueAtTime(0.001,now+dur);s.connect(f).connect(g).connect(ac.destination);s.start(now);s.stop(now+dur);}
+switch(type){
+case 'phaser':osc('sawtooth',900,200,0.12,0.09);break;
+case 'klingon':osc('square',500,120,0.14,0.07);break;
+case 'hit':noise(0.22,1000,150,0.2);osc('sawtooth',400,80,0.18,0.1);break;
+case 'baseHit':noise(0.3,1200,100,0.24);osc('sawtooth',300,50,0.25,0.12);break;
+case 'warp':osc('sine',200,1400,0.5,0.14);osc('sine',300,1800,0.5,0.1,0.1);break;
+case 'hurt':osc('sawtooth',500,90,0.3,0.18);noise(0.2,900,200,0.1);break;
+case 'die':osc('sawtooth',400,50,0.6,0.2);noise(0.5,800,60,0.16);break;
+case 'clear':[523,659,784,1047].forEach((f,i)=>osc('square',f,f,0.1,0.1,i*0.12));break;
+case 'extraLife':[523,784,1047].forEach((f,i)=>osc('sine',f,f,0.1,0.14,i*0.1));break;
+case 'over':[400,350,300,200].forEach((f,i)=>osc('sawtooth',f,f,0.15,0.14,i*0.18));break;
+}}catch(e){}}
+
+// --- CONSTANTS & HELPERS ---
+const W=()=>canvas.width;const H=()=>canvas.height;const PI2=Math.PI*2;
+function R(a,b){return a+Math.random()*(b-a);}
+function C(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function L(a,b,t){return a+(b-a)*t;}
+function dist(a,b){return Math.hypot(b.x-a.x,b.y-a.y);}
+const SPEED=3.6,PH_SPEED=8.5,KPH_SPEED=4;
+const PHASER_MAX=8,PHASER_REGEN=60;
+const DIRS=[[0,-1],[0.707,-0.707],[1,0],[0.707,0.707],[0,1],[-0.707,0.707],[-1,0],[-0.707,-0.707]];
+function dirVec(f){return DIRS[f];}
+
+// --- INPUT ---
+const K={};
+const kL=()=>K.ArrowLeft||K.KeyA,kR=()=>K.ArrowRight||K.KeyD,kU=()=>K.ArrowUp||K.KeyW,kD=()=>K.ArrowDown||K.KeyS;
+const kFire=()=>K.Space||K.KeyX;
+const kStart=()=>K.Space||K.Enter;
+
+// --- STATE ---
+const ST={TITLE:0,READY:1,PLAYING:2,WARP:3,SECTOR_CLEAR:4,PAUSED:5,GAMEOVER:6};
+let state=ST.TITLE,t=0;
+let score=0,hiScore=parseInt(localStorage.getItem('st_hi')||'0');
+let sector=1,lives=3,nextLifeAt=20000;
+let phaserCharge=PHASER_MAX,phaserRegen=0;
+let ent={x:0,y:0,facing:0,hp:100,mhp:100,inv:0,alive:true,deadT:0};
+let klingons=[],phasers=[],kphasers=[],base=null;
+let particles=[],popups=[];
+let stars=[],nebula=[];
+let shakeT=0,shakeI=0,flash=0,warpT=0;
+let banner={txt:'',sub:'',t:0,m:0,col:'#4fd0ff'};
+let fireHeld=false;
+
+function initStars(){
+stars=[];
+for(let i=0;i<110;i++)stars.push({x:R(0,W()),y:R(0,H()),s:R(0.2,1.4),r:R(0.3,1.3)});
+nebula=[];
+for(let i=0;i<5;i++)nebula.push({x:R(0,W()),y:R(0,H()),r:R(90,180),a:R(0.03,0.08),s:R(0.1,0.3),hue:R(0,1)>0.5?'#1a2a4a':'#2a1a3a'});
+}
+initStars();
+function tickStars(){
+for(const s of stars){s.y+=s.s*0.4;if(s.y>H()+2){s.y=-2;s.x=R(0,W());}}
+for(const n of nebula){n.y+=n.s*0.3;if(n.y-n.r>H()){n.y=-n.r;n.x=R(0,W());}}
+}
+function initEnt(){ent.x=W()/2;ent.y=H()*0.72;ent.facing=0;ent.hp=ent.mhp;ent.inv=0;ent.alive=true;ent.deadT=0;}
+ent.mhp=150;
+function addParticles(x,y,n,cols,sp){for(let i=0;i<n;i++){const a=R(0,PI2),s=R(0.5,sp);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:R(1.5,4),life:R(18,40),max:40,col:cols[Math.floor(R(0,cols.length))]});}}
+function addPopup(x,y,txt,col){popups.push({x,y,txt,col:col||'#ff0',t:45});}
+function shake(n,i){shakeT=Math.max(shakeT,n);shakeI=Math.max(shakeI,i);}
+function checkHi(){if(score>hiScore){hiScore=score;localStorage.setItem('st_hi',String(hiScore));}}
+function checkExtraLife(){if(score>=nextLifeAt&&lives<6){lives++;nextLifeAt+=20000;playSound('extraLife');addPopup(ent.x,ent.y-30,'EXTRA LIFE!','#0f0');}}// --- SPRITES ---
+function drawStars(){
+for(const s of stars){ctx.globalAlpha=C(s.s,0.3,1);ctx.fillStyle='#cfe8ff';ctx.fillRect(s.x,s.y,s.r,s.r);}
+ctx.globalAlpha=1;
+}
+function drawNebula(){
+for(const n of nebula){
+const g=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r);
+g.addColorStop(0,n.hue);g.addColorStop(1,'rgba(0,0,0,0)');
+ctx.globalAlpha=n.a;ctx.fillStyle=g;ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,PI2);ctx.fill();
+}
+ctx.globalAlpha=1;
+}
+function drawEnterprise(x,y,facing,alive){
+ctx.save();ctx.translate(x,y);ctx.rotate(facing*Math.PI/4);
+ctx.shadowColor='#4fd0ff';ctx.shadowBlur=12;
+// nacelles
+ctx.fillStyle='#2a6a9a';
+ctx.beginPath();ctx.ellipse(-7,9,2.6,5.5,0,0,PI2);ctx.fill();
+ctx.beginPath();ctx.ellipse(7,9,2.6,5.5,0,0,PI2);ctx.fill();
+// spine
+ctx.fillStyle='#4a7a9a';ctx.fillRect(-1.6,-5,3.2,16);
+// engineering section
+ctx.fillStyle='#3a6a8a';ctx.beginPath();ctx.ellipse(0,13,4,5,0,0,PI2);ctx.fill();
+// saucer
+ctx.fillStyle='#7ab0d0';ctx.beginPath();ctx.ellipse(0,-7,10.5,5.5,0,0,PI2);ctx.fill();
+ctx.fillStyle='#a8d8f0';ctx.beginPath();ctx.ellipse(0,-8,6.5,3,0,0,PI2);ctx.fill();
+ctx.shadowBlur=0;
+// deflector glow
+ctx.fillStyle='rgba(79,208,255,'+(0.4+0.3*Math.sin(t*0.2))+')';
+ctx.beginPath();ctx.arc(0,-11,1.5,0,PI2);ctx.fill();
+ctx.restore();
+// hull bar
+if(alive){
+const w=26,pct=ent.hp/ent.mhp;
+ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(x-w/2,y-20,w,3);
+ctx.fillStyle=pct>0.4?'#0fa':'#f44';ctx.fillRect(x-w/2,y-20,w*pct,3);
+}
+}
+function drawKlingon(k){
+ctx.save();ctx.translate(k.x,k.y);
+const ang=Math.atan2(k.vy,k.vx);ctx.rotate(ang+Math.PI/2);
+ctx.shadowColor='#ff3030';ctx.shadowBlur=8;
+if(k.type==='fighter'){
+  ctx.fillStyle='#5a2a2a';
+  ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(7,-2);ctx.lineTo(5,6);ctx.lineTo(0,10);ctx.lineTo(-5,6);ctx.lineTo(-7,-2);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#7a3a3a';
+  ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(3,-2);ctx.lineTo(0,4);ctx.lineTo(-3,-2);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#ffd040';ctx.beginPath();ctx.arc(0,0,2,0,PI2);ctx.fill();
+}else{
+  ctx.fillStyle='#4a2020';
+  ctx.beginPath();ctx.moveTo(0,-14);ctx.lineTo(11,-4);ctx.lineTo(9,8);ctx.lineTo(0,15);ctx.lineTo(-9,8);ctx.lineTo(-11,-4);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#6a3030';
+  ctx.beginPath();ctx.moveTo(0,-14);ctx.lineTo(5,-4);ctx.lineTo(0,6);ctx.lineTo(-5,-4);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#ff8030';ctx.beginPath();ctx.arc(0,0,3,0,PI2);ctx.fill();
+}
+ctx.shadowBlur=0;ctx.restore();
+}
+function drawBase(b){
+ctx.save();ctx.translate(b.x,b.y);
+ctx.shadowColor='#ff3030';ctx.shadowBlur=14;
+// hexagon hull
+ctx.fillStyle='#3a1a1a';
+ctx.beginPath();
+for(let i=0;i<6;i++){const a=i/6*PI2-Math.PI/2;const px=Math.cos(a)*42,py=Math.sin(a)*34;i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+ctx.closePath();ctx.fill();
+ctx.strokeStyle='#7a3030';ctx.lineWidth=2;ctx.stroke();
+// turrets
+for(let i=0;i<3;i++){const a=i/3*PI2+Math.PI/6;const tx=Math.cos(a)*30,ty=Math.sin(a)*24;
+  ctx.fillStyle='#5a2a2a';ctx.beginPath();ctx.arc(tx,ty,6,0,PI2);ctx.fill();
+  ctx.fillStyle='#ffd040';ctx.beginPath();ctx.arc(tx,ty,2.5,0,PI2);ctx.fill();
+}
+// core
+const coreA=0.6+0.4*Math.sin(t*0.15);
+ctx.fillStyle='rgba(255,60,30,'+coreA+')';ctx.beginPath();ctx.arc(0,0,12,0,PI2);ctx.fill();
+ctx.fillStyle='#ffd040';ctx.beginPath();ctx.arc(0,0,6,0,PI2);ctx.fill();
+ctx.shadowBlur=0;ctx.restore();
+// hull bar
+const w=90,pct=b.hp/b.mhp;
+ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(b.x-w/2,b.y-50,w,5);
+ctx.fillStyle='#f44';ctx.fillRect(b.x-w/2,b.y-50,w*pct,5);
+ctx.fillStyle='#ff8080';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText('KLINGON BASE',b.x,b.y-55);
+}
+function drawPhaser(p){
+const ang=Math.atan2(p.vy,p.vx);
+ctx.save();ctx.translate(p.x,p.y);ctx.rotate(ang);
+ctx.shadowColor=p.col;ctx.shadowBlur=8;
+ctx.fillStyle=p.col;
+ctx.beginPath();ctx.ellipse(0,0,7,2,0,0,PI2);ctx.fill();
+ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(2,0,3,1,0,0,PI2);ctx.fill();
+ctx.shadowBlur=0;ctx.restore();
+}
+function drawParticles(){
+for(const p of particles){
+ctx.globalAlpha=C(p.life/p.max,0,1);ctx.fillStyle=p.col;
+ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,PI2);ctx.fill();
+}
+ctx.globalAlpha=1;
+}
+function drawPopups(){
+ctx.textAlign='center';ctx.font='bold 13px monospace';
+for(const p of popups){ctx.globalAlpha=C(p.t/45,0,1);ctx.fillStyle=p.col;ctx.fillText(p.txt,p.x,p.y);}
+ctx.globalAlpha=1;
+}
+function drawPhaserCharge(){
+// pips at bottom
+const n=PHASER_MAX,x0=W()/2-(n*14)/2,y0=H()-22;
+for(let i=0;i<n;i++){
+const on=i<phaserCharge;
+ctx.fillStyle=on?'#4fd0ff':'rgba(79,208,255,0.15)';
+if(on){ctx.shadowColor='#4fd0ff';ctx.shadowBlur=6;}
+ctx.fillRect(x0+i*14,y0,10,6);
+ctx.shadowBlur=0;
+}
+ctx.fillStyle='#4fd0ff';ctx.font='9px monospace';ctx.textAlign='center';
+ctx.fillText('PHASER CHARGE',W()/2,y0-4);
+}
+function drawWarp(){
+const p=1-C(warpT/40,0,1);
+ctx.save();
+for(const s of stars){
+ctx.strokeStyle='rgba(160,220,255,'+(0.5*p)+')';
+ctx.lineWidth=s.r;
+const dx=s.x-W()/2,dy=s.y-H()/2;
+ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x-dx*p*3,s.y-dy*p*3);ctx.stroke();
+}
+ctx.fillStyle='rgba(180,230,255,'+(0.3*p)+')';
+ctx.fillRect(0,0,W(),H());
+ctx.restore();
+}
+function drawBanner(){
+if(banner.t<=0)return;
+const a=C(banner.t/30,0,1);
+ctx.globalAlpha=a;
+ctx.fillStyle='rgba(0,10,25,0.7)';ctx.fillRect(0,H()/2-44,W(),88);
+ctx.textAlign='center';
+ctx.font='bold 30px monospace';ctx.fillStyle=banner.col;
+ctx.shadowColor=banner.col;ctx.shadowBlur=16;
+ctx.fillText(banner.txt,W()/2,H()/2-4);
+ctx.font='14px monospace';ctx.fillStyle='#b8d8e8';
+ctx.fillText(banner.sub,W()/2,H()/2+24);
+ctx.shadowBlur=0;ctx.globalAlpha=1;
+}
+function draw(){
+ctx.fillStyle='#050a14';ctx.fillRect(0,0,W(),H());
+if(shakeT>0){ctx.save();ctx.translate(R(-shakeI,shakeI),R(-shakeI,shakeI));}
+drawNebula();drawStars();
+if(state===ST.WARP){drawWarp();}
+else{
+if(base)drawBase(base);
+for(const k of klingons)drawKlingon(k);
+for(const p of phasers)drawPhaser(p);
+for(const p of kphasers)drawPhaser(p);
+if(ent.alive&&state!==ST.TITLE)drawEnterprise(ent.x,ent.y,ent.facing,true);
+drawPhaserCharge();
+}
+drawParticles();drawPopups();
+if(flash>0){ctx.fillStyle='rgba(255,255,255,'+C(flash/20,0,0.6)+')';ctx.fillRect(0,0,W(),H());flash--;}
+if(shakeT>0){ctx.restore();shakeT--;}
+drawBanner();
+}// --- COMBAT ---
+function spawnKlingon(type){
+  const edge=Math.floor(R(0,3));let x,y;
+  if(edge===0){x=R(40,W()-40);y=-30;}
+  else if(edge===1){x=-30;y=R(40,H()*0.5);}
+  else{x=W()+30;y=R(40,H()*0.5);}
+  const fighter=(type==='fighter');
+  klingons.push({type,x,y,vx:0,vy:0,hp:fighter?1:4,mhp:fighter?1:4,fireCd:R(30,70),wob:R(0,PI2),speed:fighter?1.6:0.85,size:fighter?13:21,circle:Math.random()>0.5?1:-1});
+}
+function firePhaser(){
+  if(phaserCharge<1||!ent.alive)return;
+  phaserCharge--;
+  const d=dirVec(ent.facing);
+  phasers.push({x:ent.x+d[0]*16,y:ent.y+d[1]*16,vx:d[0]*PH_SPEED,vy:d[1]*PH_SPEED,life:90});
+  playSound('phaser');
+}
+function fireKlingon(k){
+  const ang=Math.atan2(ent.y-k.y,ent.x-k.x);
+  const sp=KPH_SPEED*(0.8+sector*0.05);
+  kphasers.push({x:k.x,y:k.y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,life:130});
+  playSound('klingon');
+}
+function fireBase(){
+  const ang=Math.atan2(ent.y-base.y,ent.x-base.x);
+  for(let i=-1;i<=1;i++){
+    const a=ang+i*0.28;
+    kphasers.push({x:base.x,y:base.y+base.size*0.4,vx:Math.cos(a)*KPH_SPEED,vy:Math.sin(a)*KPH_SPEED,life:140});
+  }
+  playSound('klingon');
+}
+function destroyKlingon(k){
+  k.dead=true;
+  const pts=k.type==='fighter'?100:300;
+  score+=pts;checkHi();checkExtraLife();
+  addParticles(k.x,k.y,16,['#ff5030','#ffb020','#fff'],'8');
+  addPopup(k.x,k.y,'+'+pts,'#ff0');
+  shake(12,4);playSound('hit');
+}
+function hitBase(){
+  if(!base||!base.alive)return;
+  base.hp--;
+  addParticles(base.x+R(-20,20),base.y+R(-12,16),6,['#ff5030','#ffb020'],'6');
+  playSound('baseHit');
+  if(base.hp<=0)destroyBase();
+}
+function destroyBase(){
+  base.alive=false;
+  score+=2000;checkHi();checkExtraLife();
+  addParticles(base.x,base.y,44,['#ff5030','#ffb020','#fff','#4fd0ff'],'12');
+  addPopup(base.x,base.y,'BASE DESTROYED! +2000','#0f0');
+  shake(30,10);flash=20;playSound('baseHit');
+  startWarp();
+}
+function hitPlayer(){
+  if(!ent.alive||ent.inv>0)return;
+  ent.hp-=20;ent.inv=90;
+  shake(16,6);playSound('hurt');
+  addParticles(ent.x,ent.y,12,['#4fd0ff','#fff'],'7');
+  if(ent.hp<=0)destroyEnt();
+}
+function destroyEnt(){
+  ent.alive=false;ent.deadT=0;
+  addParticles(ent.x,ent.y,42,['#4fd0ff','#7ab0d0','#fff'],'11');
+  shake(30,10);flash=16;playSound('die');
+  lives--;
+  if(lives<=0)gameOver();
+}
+function upObjects(){
+  for(const p of phasers){p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x<-10||p.x>W()+10||p.y<-10||p.y>H()+10)p.dead=true;}
+  for(const p of kphasers){p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x<-10||p.x>W()+10||p.y<-10||p.y>H()+10)p.dead=true;}
+  for(const k of klingons){
+    if(k.dead)continue;
+    const d=dist(k,ent);
+    const ang=Math.atan2(ent.y-k.y,ent.x-k.x);
+    if(d>90){k.vx=Math.cos(ang)*k.speed;k.vy=Math.sin(ang)*k.speed;}
+    else{k.wob+=0.03;const a=ang+Math.PI/2*k.circle;k.vx=Math.cos(a)*k.speed*0.8;k.vy=Math.sin(a)*k.speed*0.8;}
+    k.x+=k.vx;k.y+=k.vy;
+    k.fireCd--;
+    if(k.fireCd<=0&&ent.alive){fireKlingon(k);k.fireCd=k.type==='fighter'?R(90,140):R(70,110);}
+    if(k.x<-60||k.x>W()+60||k.y<-60||k.y>H()+60)k.dead=true;
+  }
+  // base drift + fire
+  if(base&&base.alive){
+    base.y+=0.22;if(base.y>H()*0.48)base.y=H()*0.48;
+    base.fireCd--;
+    if(base.fireCd<=0&&ent.alive){fireBase();base.fireCd=Math.max(34,62-sector*2);}
+  }
+  // collisions
+  for(const p of phasers){
+    if(p.dead)continue;
+    for(const k of klingons){if(!k.dead&&dist(p,k)<k.size+4){p.dead=true;destroyKlingon(k);break;}}
+    if(p.dead)continue;
+    if(base&&base.alive&&dist(p,base)<base.size+4){p.dead=true;hitBase();}
+  }
+  if(ent.alive&&ent.inv<=0){
+    for(const p of kphasers){if(!p.dead&&dist(p,ent)<14){p.dead=true;hitPlayer();break;}}
+    for(const k of klingons){if(!k.dead&&dist(k,ent)<k.size+9){k.dead=true;hitPlayer();}}
+  }
+  klingons=klingons.filter(k=>!k.dead);
+  phasers=phasers.filter(p=>!p.dead);
+  kphasers=kphasers.filter(p=>!p.dead);
+}// --- FLOW ---
+function spawnBase(){base={x:W()/2,y:110,hp:10+sector*2,mhp:10+sector*2,fireCd:70,size:46,alive:true};}
+function startSector(){
+  klingons=[];phasers=[];kphasers=[];base=null;
+  spawnBase();
+  const nF=Math.min(2+sector,7),nCruisers=Math.min(sector,4);
+  for(let i=0;i<nF;i++)spawnKlingon('fighter');
+  for(let i=0;i<nCruisers;i++)spawnKlingon('cruiser');
+  initEnt();phaserCharge=PHASER_MAX;phaserRegen=0;
+  state=ST.READY;
+  banner={txt:'SECTOR '+sector,sub:'Destroy the Klingon base to warp',t:90,m:90,col:'#4fd0ff'};
+  updateHud();
+}
+function startWarp(){state=ST.WARP;warpT=0;playSound('warp');}
+function gameOver(){state=ST.GAMEOVER;playSound('over');showOverlay();}
+function showOverlay(){
+  const box=document.getElementById('msgBox');
+  box.innerHTML='<h2 class="c-red">GAME OVER</h2><p class="c-amber" style="font-size:16px;">FINAL SCORE: '+score+'</p><p>HI-SCORE: '+hiScore+'</p><p>SECTOR REACHED: '+sector+'</p><p style="margin-top:14px;">Press <span class="c-yellow">SPACE</span> to play again</p>';
+}
+function showPause(){
+  const box=document.getElementById('msgBox');
+  box.innerHTML='<h2 class="c-cyan">PAUSED</h2><p style="margin-top:10px;">Press <span class="c-yellow">P</span> to resume</p>';
+}
+function startGame(){
+  ensureAudio();
+  score=0;sector=1;lives=3;nextLifeAt=20000;
+  document.getElementById('overlay').style.display='none';
+  startSector();
+}
+function updateHud(){
+  document.getElementById('uScore').textContent='SCORE: '+score;
+  document.getElementById('uHi').textContent='HI: '+hiScore;
+  document.getElementById('uSector').textContent='SECTOR '+sector;
+  document.getElementById('uPhaser').textContent='PHASER: '+phaserCharge;
+  document.getElementById('uLives').textContent='LIVES: '+lives;
+}
+window.addEventListener('keydown',e=>{
+  if(state===ST.TITLE||state===ST.GAMEOVER){if(e.code==='Space'||e.code==='Enter')startGame();}
+  if(state===ST.PLAYING&&e.code==='KeyP'){state=ST.PAUSED;document.getElementById('overlay').style.display='flex';showPause();}
+  if(state===ST.PAUSED&&(e.code==='KeyP'||e.code==='Space'||e.code==='Enter')){state=ST.PLAYING;document.getElementById('overlay').style.display='none';}
+});
+function update(){
+  t++;
+  if(state===ST.PAUSED||state===ST.TITLE||state===ST.GAMEOVER)return;
+  tickStars();
+  if(state===ST.READY){banner.t--;if(banner.t<=0){state=ST.PLAYING;updateHud();}return;}
+  if(state===ST.WARP){warpT++;if(warpT>=40){sector++;startSector();}return;}
+  if(state===ST.PLAYING){
+    if(ent.alive){
+      let mx=0,my=0;
+      if(kU())my=-1;if(kD())my=1;if(kL())mx=-1;if(kR())mx=1;
+      if(mx||my){
+        ent.x+=mx*SPEED;ent.y+=my*SPEED;
+        const ang=Math.atan2(my,mx);
+        ent.facing=(Math.round((ang+Math.PI/2)/(Math.PI/4))+8)%8;
+      }
+      ent.x=C(ent.x,16,W()-16);ent.y=C(ent.y,20,H()-16);
+      if(ent.inv>0)ent.inv--;
+      if(kFire()&&!fireHeld){firePhaser();fireHeld=true;}
+      if(!kFire())fireHeld=false;
+      phaserRegen++;
+      if(phaserRegen>=PHASER_REGEN&&phaserCharge<PHASER_MAX){phaserCharge++;phaserRegen=0;}
+      updateHud();
+    }else{
+      ent.deadT++;
+      if(ent.deadT>=90&&lives>0){initEnt();ent.inv=90;}
+    }
+    upObjects();
+    checkHi();
+  }
+  for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vx*=0.94;p.vy*=0.94;p.life--;}
+  particles=particles.filter(p=>p.life>0);
+  for(const p of popups){p.y-=0.5;p.t--;}
+  popups=popups.filter(p=>p.t>0);
+}
+function loop(){requestAnimationFrame(loop);update();draw();}
+loop();
+</script>
+</body>
+</html>
