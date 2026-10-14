@@ -97,6 +97,14 @@
       "description": "Star Wars (1983) was Midway's landmark first-person shooter \u2014 you piloted an X-wing down the Death Star's surface trench in a cockpit view, dodging TIE-fighter laser fire and firing proton torpedoes at thermal exhaust ports. This browser version captures that classic feel: fly down a 3D-perspective trench from the cockpit, aim the crosshair, and blast thermal ports with your limited torpedo supply while dodging lasers from TIEs and wall turrets. Destroy enough ports to expose the Death Star's core, then blow it up to clear the run. Endless runs with rising difficulty and a persistent hi-score. It's close to the original in spirit and mechanics, but not a pixel-perfect replica.",
       "gameFile": "star-wars.html",
       "screenshot": "star-wars.png"
+    },
+    {
+      "title": "Star Trek",
+      "company": "GT Interactive (Vectrex)",
+      "year": "1983",
+      "description": "Star Trek (1983) was a top-down space shooter released for the Vectrex, where you commanded the Enterprise in a sector of Klingon space. This browser version captures that classic feel: maneuver the Enterprise with 8-directional movement, fire your limited phaser charge (which only recharges over time, so don't waste shots) at Klingon fighters and battlecruisers, dodge their return fire, and destroy the Klingon base to warp to the next sector. Each sector brings more Klingons, a tougher base, and faster fire. Endless runs with a persistent hi-score. It's close to the original in spirit and mechanics, but not a pixel-perfect replica.",
+      "gameFile": "star-trek.html",
+      "screenshot": "star-trek.png"
     }
   ]
 }
