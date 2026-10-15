@@ -1,6 +1,6 @@
 # Homelab Portal — Architecture
 
-> **Status:** v0.2 (2026-08-24) — owner decisions resolved; Part B (server) is a **draft pending discovery on `thor`**.
+> **Status:** v0.3 (2026-10-15) — Part B executed on `thor` (portal live at choukalos.com); status publisher live — see §6.3.
 > **Source of truth:** `docs/brief/homelab_portal_implementation_brief.pdf` + laptop/server inventory.
 > **Audience:** humans (owner, future readers) AND AI agents (stable section numbers, tables, explicit invariants, copy-pasteable commands in §13).
 
@@ -8,7 +8,7 @@
 
 ## 1. One-paragraph summary
 
-The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic CMS) with a **static, Git-managed portal** plus a **public file drop zone**. Authored pages (landing, arcade, lab, thoughts) are Markdown/HTML in a Git repo, **built on the dev laptop by Hugo**, and published by pushing the built site to a `deploy` branch that `git-sync` pulls atomically on the server; Caddy serves the result read-only. Ad-hoc artifacts (AI-generated PDFs, images, audio, video) are copied by the Skills Runner into a dedicated public directory that Caddy also serves read-only under a themed `/files/` browser. A small status publisher (deferred) writes a sanitized `status.json` consumed by the homepage. The Internet-facing server is "dumb": it serves, and changes almost nothing.
+The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic CMS) with a **static, Git-managed portal** plus a **public file drop zone**. Authored pages (landing, arcade, lab, thoughts) are Markdown/HTML in a Git repo, **built on the dev laptop by Hugo**, and published by pushing the built site to a `deploy` branch that `git-sync` pulls atomically on the server; Caddy serves the result read-only. Ad-hoc artifacts (AI-generated PDFs, images, audio, video) are copied by the Skills Runner into a dedicated public directory that Caddy also serves read-only under a themed `/files/` browser. A small `statusd` sidecar publishes a sanitized `status.json` every 30s, consumed by the homepage. The Internet-facing server is "dumb": it serves, and changes almost nothing.
 
 ## 2. Design goals
 
@@ -23,7 +23,7 @@ The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic C
 | Machine | Host | Role | What lives here |
 |---|---|---|---|
 | **Dev laptop** (this machine, arm64 Mac) | `chuck`'s MacBook | Authoring, **build**, preview, git | Hugo source repo (this directory), local `hugo server` preview, `deploy.sh` (build + publish), arcade source |
-| **Server** | `thor` (x86) | Hosting | Caddy origin (internal port), git-sync, status publisher (deferred), Skills Runner, `/homelab/data/...` storage |
+| **Server** | `thor` (x86) | Hosting | Caddy origin (internal port), git-sync, status publisher (`statusd` sidecar), Skills Runner, `/homelab/data/...` storage |
 
 **Edge path (kept as-is):** Internet → **Cloudflare** (DNS + tunnel) → **existing Caddy reverse proxy on thor** → upstreams. The new static origin is a *new upstream* behind the existing Caddy; cutover = re-pointing the `choukalos.com` route from the Ghost upstream to the portal origin upstream. No new TLS ingress, no new public ports.
 
@@ -65,8 +65,8 @@ The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic C
    | hugo.toml  deploy.sh          |
    +-------------------------------+
         |
-   status publisher (thor, DEFERRED) ---> /homelab/data/public-site/runtime/status.json
-        (sanitized, every 30-60s, read-only to Caddy)
+   statusd sidecar (thor) ------------> /home/chuck/data/portal/runtime/status.json
+        (sanitized, every 30s, read-only to the portal container)
 ```
 
 ## 5. Components
@@ -91,11 +91,11 @@ The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic C
 |---|---|---|
 | Caddy (`portal` container) | Serve generated site, themed `/files/` browse, `/status/`, headers/compression | None (all content mounts read-only) |
 | git-sync v4 | Pull `deploy` branch, atomically switch `current` symlink | Only its deployment volume |
-| status publisher | Produce sanitized `status.json` on a schedule — **deferred (placeholder now)** | Only runtime status dir |
+| status publisher (`statusd`) | Produce sanitized `status.json` every 30s (VM checks + probe fallbacks) — **live** | Runtime status dir (only writer; portal mounts it ro) |
 | Skills Runner (real component on thor) | `publish_file` into the public drop zone | Only the public media dir (for publishing) |
 | existing Caddy reverse proxy | TLS-terminating upstream routing behind the Cloudflare tunnel (unchanged) | — |
 
-**Out of scope / untouched:** the internal family portal (`~/Code/internal-homelab-portal`, Node/Express, LAN-only) stays as-is — different system (internal, dynamic, Grafana-embedded). Public Grafana on thor is a **future** status source (deferred).
+**Out of scope / untouched:** the internal family portal (`~/Code/internal-homelab-portal`, Node/Express, LAN-only) stays as-is — different system (internal, dynamic, Grafana-embedded). Public Grafana on thor is a **possible future** status source (not used — `statusd` queries Victoria Metrics directly).
 
 ## 6. Data flows
 
@@ -115,23 +115,30 @@ The public homelab site at **https://choukalos.com** replaces Ghost (a dynamic C
 2. Caddy's themed `/files/` browse template shows it immediately — no git commit, no rebuild.
 3. `publish_file` skill returns `{path, url, size_bytes, sha256}`.
 
-### 6.3 Status panel — **deferred (placeholder)**
+### 6.3 Status panel — **live** (`statusd` sidecar, since 2026-10-15)
 
-- **Now:** homepage SYSTEM STATUS module renders a graceful placeholder ("status service offline — check back soon") when `/status/status.json` is missing/stale. No publisher exists yet.
-- **Later:** status publisher on thor (30–60s schedule; reads existing monitoring — e.g. the public Grafana — or explicitly configured health checks; maps to friendly names + coarse states `online`/`degraded`/`offline`; atomic write to the runtime dir; Caddy serves read-only).
+- **Publisher:** `statusd` — a tiny stdlib-only Python sidecar container (homelab repo: `portal/statusd.py`, `compose/compose.portal.yml`). No published ports, read-only rootfs, non-root; its only write is an atomic tmp-file + rename of `status.json` into the runtime dir, which the portal container serves read-only under `/status/`.
+- **Schedule:** every 30s. Victoria Metrics first, direct-probe fallback:
+  - **AI LAB** — `up{job="litellm"}` → probe `thor:4000/health/liveliness`
+  - **MEDIA** — `up{job="node-exporter-lego"}` → probe `lego:9100/metrics`
+  - **AUTOMATION** — cadvisor `container_last_seen` for the homebridge container → probe `lego:8581/login`
+  - **PUBLIC FILES** — online by definition (if this file is being served, the portal is up)
+- **Homepage:** the SYSTEM STATUS tile renders the friendly tiles + an "updated HH:MM UTC" stamp, plus a **SITE BUILD** line (first 8 chars of `portal_revision` — which blog build is live). It is styled "unknown" (grey dot) on purpose: a version stamp, not a service. If `status.json` is missing or >5 min old, the tile shows "stale — last update" (or the server-rendered placeholder if it was never written).
+- **Security:** the payload is sanitized — friendly names, coarse states (`online`/`offline`/`unknown`), `updated_at`, `portal_revision` only. No IPs, hostnames, container names, versions, ports, credentials, or raw monitoring payloads (§10.6).
+- **Future:** the public Grafana remains a possible status source (not used — `statusd` queries Victoria Metrics directly).
 
-Example payload (target shape — services TBD when implemented):
+Example payload (live shape):
 
 ```json
 {
-  "overall": "online",
-  "updated_at": "2026-08-24T15:00:00Z",
-  "portal_revision": "a1b2c3d",
+  "updated_at": "2026-10-15T16:44:13Z",
   "services": [
-    {"name": "AI Lab", "state": "online"},
-    {"name": "Media", "state": "online"},
-    {"name": "Public Files", "state": "online"}
-  ]
+    {"name": "AI LAB", "state": "online"},
+    {"name": "MEDIA", "state": "online"},
+    {"name": "AUTOMATION", "state": "online"},
+    {"name": "PUBLIC FILES", "state": "online"}
+  ],
+  "portal_revision": "d625b4be5b9d2c13682425d6877c6c3ffedbf7ec"
 }
 ```
 
@@ -213,7 +220,7 @@ summary: "One-line teaser for the homepage RECENT THOUGHTS module"
     ├── public-site/
     │   ├── git/                   # git-sync worktrees + `current` symlink
     │   └── runtime/
-    │       └── status.json        # (deferred)
+    │       └── status.json        # written by statusd every 30s
     └── media/
         └── public/                # ONLY this subtree is public
             ├── ai/  files/  images/  audio/  video/
@@ -227,7 +234,7 @@ summary: "One-line teaser for the homepage RECENT THOUGHTS module"
 | Caddy | `/homelab/data/public-site/runtime` | `/srv/runtime` | ro |
 | Caddy | `/homelab/data/media/public` | `/srv/files` | ro |
 | git-sync | `/homelab/data/public-site/git` | `/git` | rw |
-| status publisher | `/homelab/data/public-site/runtime` | `/status` | rw |
+| status publisher (`statusd`) | `/home/chuck/data/portal/runtime` (as built) | `/runtime` | rw (only writer) |
 | Skills Runner | `/homelab/data/media/public` | `/public` | rw |
 
 ### 9.3 Caddyfile (target shape)
@@ -244,7 +251,7 @@ summary: "One-line teaser for the homepage RECENT THOUGHTS module"
         }
     }
 
-    # Sanitized status output (deferred)
+    # Sanitized status output (statusd writes status.json every 30s)
     handle_path /status/* {
         root * /srv/runtime
         file_server
@@ -271,7 +278,7 @@ services:
     env: [GITSYNC_REPO=<github.com/<owner>/homelab-blog>, GITSYNC_REF=deploy,
           GITSYNC_ROOT=/git, GITSYNC_LINK=current, GITSYNC_PERIOD=30s]
     volumes: [/homelab/data/public-site/git:/git]
-  status-publisher:  # deferred
+  statusd:           # live — stdlib-only sidecar (homelab repo: compose/compose.portal.yml)
 ```
 
 **git-sync v4 notes:** current docs use `--link` (not `--dest`) and `--period` (not `--wait`); publishes via worktree + symlink for atomic consumption. Repo is public → no deploy key needed (revisit if the repo goes private).
@@ -313,7 +320,7 @@ services:
 | 4 | Edge | Cloudflare tunnel + existing Caddy reverse proxy on thor — kept as-is; new origin is a new upstream; cutover re-points the route |
 | 5 | Arcade | 7 games (drop joust — broken; rolling-thunder — meh); `one-page-arcade` folder merged into this repo; themed index page with screenshots + maker/year/details; more games later |
 | 6 | Ghost migration | Start fresh (no post migration) |
-| 7 | Status panel | Placeholder now; publisher + Grafana integration deferred to a later phase |
+| 7 | Status panel | Publisher live: `statusd` sidecar (Victoria Metrics checks + probe fallbacks, 30s, atomic write); homepage shows friendly tiles + SITE BUILD revision line. Public Grafana remains a possible future source |
 | 8 | Skills Runner | Real component on thor — `publish_file` proceeds as planned |
 | 9 | Part B execution | Draft now; owner will run pi on thor to discover actual architecture and firm up Part B before server work begins |
 | 10 | Hugo install | Prebuilt binary (no Homebrew); laptop arm64, server x86 — binary choice only matters on the laptop |

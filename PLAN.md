@@ -91,7 +91,7 @@ To be executed on the server by a pi run on thor. **Inspect before editing** —
 
 ### S2. Caddy origin + themed `/files/` *(brief Phase 3)*
 - [ ] `compose.yaml` + `Caddyfile` for the `portal` service: internal-only port, existing network conventions, pinned Caddy version, `read_only` root FS, no Docker socket
-- [ ] Serve: generated site from git-sync `current` (ro) · `/files/*` from the public drop (ro, custom `browse-template.html`) · `/status/*` from runtime (ro, deferred)
+- [ ] Serve: generated site from git-sync `current` (ro) · `/files/*` from the public drop (ro, custom `browse-template.html`) · `/status/*` from runtime (ro)
 - [ ] Browse template: portal styling, breadcrumb, dirs-first, filename/size/mtime, PUBLIC DROP banner, inline-SVG icons, no JS required, no filesystem/path leakage
 - [ ] Security headers for a static site; **active-content policy**: block or force-download `.html/.htm/.js` in the drop zone
 - [ ] Add the portal origin as a new upstream behind the existing Caddy reverse proxy (route added, Ghost still serving — no cutover yet)
@@ -104,13 +104,16 @@ To be executed on the server by a pi run on thor. **Inspect before editing** —
 
 **Acceptance:** push a test revision → live change within ~30s; atomic swap observed (no mixed-revision files).
 
-### S4. Status publisher *(brief Phase 5) — DEFERRED*
-- [ ] Smallest reasonable publisher (script or tiny container, no public ingress): read the public Grafana or explicitly configured health checks only
-- [ ] Writes `status.json` atomically every 30–60s: friendly names, coarse states, `updated_at`, `portal_revision`
-- [ ] Payload contains **only** intended public data — no IPs, hostnames, versions, ports, credentials, stack traces, env data, Docker details, raw monitoring payloads
-- [ ] Frontend graceful degradation confirmed (stale/missing file)
+### S4. Status publisher *(brief Phase 5) — DONE (2026-10-15)*
+- [x] Smallest reasonable publisher (script or tiny container, no public ingress): read the public Grafana or explicitly configured health checks only
+  → `statusd` sidecar container (homelab repo, `portal/statusd.py`): stdlib-only Python, no published ports, read-only rootfs. Checks Victoria Metrics first (litellm / node-exporter-lego / cadvisor-lego) with direct-probe fallbacks — no Grafana needed.
+- [x] Writes `status.json` atomically every 30–60s: friendly names, coarse states, `updated_at`, `portal_revision`
+  → 30s interval, tmp-file + rename. `portal_revision` = the git-sync `current` commit; the homepage shows it as the **SITE BUILD** line (grey, a version stamp — not a service).
+- [x] Payload contains **only** intended public data — no IPs, hostnames, versions, ports, credentials, stack traces, env data, Docker details, raw monitoring payloads
+- [x] Frontend graceful degradation confirmed (stale/missing file)
 
-**Acceptance:** `curl /status/status.json` shows the sanitized schema; homepage tiles update; stale-file case degrades gracefully. *(Deferred — placeholder is live in the meantime.)*
+**Acceptance:** `curl /status/status.json` shows the sanitized schema; homepage tiles update; stale-file case degrades gracefully.
+**As built:** verified live on `thor` — `GET /status/status.json` returns the sanitized schema; homepage tiles render states; if statusd dies the tile shows "stale — last update" after 5 min.
 
 ### S5. Skills Runner `publish_file` *(brief Phase 6)*
 - [ ] Add only the confirmed public dir as an RW mount (e.g. `/data/media/public:/public`)
@@ -152,7 +155,7 @@ A2 theme                         │  S0 discovery on thor (independent; revises
 A3 homepage modules              │  S1 filesystem boundaries (independent)
 A4 authoring + deploy.sh         │  S2 Caddy + /files/ (independent; placeholder content OK)
 A5 local validation + docs       │  S3 git-sync (NEEDS: A0 GitHub push + deploy branch)
-                                 │  S4 status publisher (DEFERRED)
+                                 │  S4 status publisher (DONE 2026-10-15)
                                  │  S5 Skills Runner (independent)
                                  │  S6 test matrix (NEEDS: A5 + S2–S3, S5)
                                  │  S7 cutover (NEEDS: Part A done + S6 passed)
@@ -170,7 +173,7 @@ A5 local validation + docs       │  S3 git-sync (NEEDS: A0 GitHub push + deplo
 - A Markdown thought committed to Git appears after deploy sync without touching the web server
 - A PDF published via Skills Runner is visible under `/files/` with the correct returned URL
 - `/files/` matches the portal visual language and works without JavaScript
-- Status tiles update from sanitized `status.json` and degrade gracefully when stale/missing *(deferred — placeholder acceptance applies until S4)*
+- Status tiles update from sanitized `status.json` and degrade gracefully when stale/missing
 - Caddy has read-only access to site content, runtime status, and public files
 
 **Security**

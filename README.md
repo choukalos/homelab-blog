@@ -14,7 +14,7 @@ Ghost was the wrong shape for a one-person site: a CMS database, admin UI, theme
 - **Caddy** as a dumb origin server: serves built files, nothing else.
 - **git-sync** pulls a `deploy` branch and atomically swaps the site — a push is a deploy.
 - **Public drop zone** (`/files/`) for shareable artifacts that should be live *now*, without a commit or rebuild.
-- **Status panel** on the homepage: a few friendly service tiles, no internals (publisher deferred — placeholder for now).
+- **Status panel** on the homepage: a few friendly service tiles, no internals. A tiny `statusd` sidecar on the server publishes a sanitized `/status/status.json` every 30s (see `architecture.md` §6.3).
 
 Result: no database, no admin UI, no plugin surface, tiny attack surface, and publishing workflows that are just `git push` and `cp`.
 
@@ -60,7 +60,7 @@ Skills Runner publish_file() (or a manual copy) → public drop dir → live und
 
 ## Status
 
-🚧 **Migration in progress — Part A (laptop) underway.** The Hugo site, cyberpunk/brick theme, arcade merge (7 games), homepage modules, and `deploy.sh` are in this repo per `PLAN.md` Part A. Server work (Caddy origin, git-sync, status publisher, Skills Runner, cutover) is **Part B — draft**, to be firmed up by discovery on the server before execution. Ghost stays up until the new portal passes external validation.
+✅ **Portal live at https://choukalos.com.** Part A (laptop) is complete: Hugo site, cyberpunk/brick theme, arcade, homepage modules, and `deploy.sh` per `PLAN.md`. Part B (server) has been executed on `thor`: Caddy origin, git-sync, the `statusd` status publisher, Skills Runner, and cutover (Ghost is no longer the live site). The status pipeline is documented in `architecture.md` §6.3.
 
 ## Docs
 

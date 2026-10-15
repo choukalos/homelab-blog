@@ -4,6 +4,17 @@ Running log of discovered assumptions, changes, test results, and rollback steps
 
 ---
 
+## 2026-10-15 — Status publisher live (`statusd` sidecar)
+
+- The status pipeline (`architecture.md` §6.3, `PLAN.md` S4) is now **live** — it was deferred/placeholder. Implemented in the **homelab repo** (server side), not this repo: `portal/statusd.py` + `compose/compose.portal.yml` (homelab commit `972e85e`, “portal: add statusd sidecar publishing /status/status.json (Option D)”).
+- `statusd` is a stdlib-only Python sidecar container: no published ports, read-only rootfs, non-root (1000:1000), 30s interval. Checks Victoria Metrics first with direct-probe fallbacks — AI LAB (`up{job="litellm"}` → `thor:4000/health/liveliness`), MEDIA (`up{job="node-exporter-lego"}` → `lego:9100/metrics`), AUTOMATION (cadvisor `container_last_seen` for the homebridge container → `lego:8581/login`), PUBLIC FILES (online by definition). Only write: atomic tmp-file + rename of `status.json` into `/home/chuck/data/portal/runtime`, served read-only by the portal container under `/status/`.
+- Payload is sanitized: `updated_at`, friendly `services[]` with coarse `online`/`offline`/`unknown` states, and `portal_revision` (the git-sync `current` commit). No IPs, hostnames, container names, versions, ports, or raw monitoring payloads.
+- Homepage SYSTEM STATUS tile: friendly tiles + “updated HH:MM UTC” stamp + **SITE BUILD** line (first 8 chars of `portal_revision`, grey “unknown” styling — a version stamp, not a service). Relabeled from “PORTAL REV” for non-technical readers (this repo, commit `2549227`). Stale threshold 5 min → “stale — last update”.
+- Verified on `thor`: `GET /status/status.json` 200 with the sanitized schema; all four tiles online; `portal` + `portal-statusd` containers healthy. Cutover already done — choukalos.com serves the portal; no Ghost container running.
+- Ops: if `statusd` dies the tile goes stale after 5 min; `docker compose -f compose/compose.portal.yml up -d statusd` (homelab repo) recovers it. No rebuild or git push needed for status changes — only site content changes need `deploy.sh`.
+
+---
+
 ## 2026-09-22 — Added Zombie City: Last Stand to the arcade
 
 - New game from `~/Code/one-page-arcade/zombie-city.html` (Three.js FPS, 730 KB single file) → copied to `static/arcade/zombie-city.html`.
