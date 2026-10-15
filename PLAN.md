@@ -43,7 +43,7 @@ Everything here produces **source or built output**. All of it lives in this rep
 **Acceptance:** theme passes a manual mobile-viewport + keyboard-only walkthrough; no neon-on-neon body text; reduced-motion mode verified.
 
 ### A3. Homepage modules
-- [x] **SYSTEM STATUS**: fetches `status/status.json` client-side; renders friendly tiles + overall state + last-updated; **placeholder mode** when file missing/stale (publisher is deferred — must not break the page)
+- [x] **SYSTEM STATUS**: fetches `status/status.json` client-side; renders friendly tiles + overall state + last-updated; **placeholder mode** when file missing/stale (publisher is now live — see S4; the page must not break if `status.json` is missing or stale)
 - [x] **ARCADE**: large visual tile → `/arcade/`
 - [x] **LATEST DROP**: link into `/files/` (404 locally is expected; must not break)
 - [x] **RECENT THOUGHTS**: 2–3 newest posts, not a blog-first layout

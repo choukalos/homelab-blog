@@ -180,7 +180,7 @@ homelab-blog/                      # public GitHub repo
 
 | Route | Purpose | Publishing model |
 |---|---|---|
-| `/` | Portal landing + status placeholder + arcade/drop/thoughts modules | Git / Hugo |
+| `/` | Portal landing + live status panel (graceful placeholder if stale) + arcade/drop/thoughts modules | Git / Hugo |
 | `/arcade/` | Themed arcade index (cards: screenshot, title, maker, year, description) + one-page HTML games | Git / Hugo index + static game files |
 | `/thoughts/` | Occasional Markdown posts / notes | Git / Hugo |
 | `/lab/` | Projects, experiments, builds | Git / Hugo |
