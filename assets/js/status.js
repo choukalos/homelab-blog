@@ -60,7 +60,7 @@
       cells.push(
         '<li class="status-cell unknown">' +
         '<span class="dot" aria-hidden="true"></span>' +
-        '<span class="name mono">PORTAL REV</span>' +
+        '<span class="name mono">SITE BUILD</span>' +
         '<span class="state mono">' + esc(String(data.portal_revision).slice(0, 8)) + "</span>" +
         "</li>"
       );
