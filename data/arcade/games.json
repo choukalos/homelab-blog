@@ -105,14 +105,6 @@
       "description": "Star Trek (1983) was a top-down space shooter released for the Vectrex, where you commanded the Enterprise in a sector of Klingon space. This browser version captures that classic feel: maneuver the Enterprise with 8-directional movement, fire your limited phaser charge (which only recharges over time, so don't waste shots) at Klingon fighters and battlecruisers, dodge their return fire, and destroy the Klingon base to warp to the next sector. Each sector brings more Klingons, a tougher base, and faster fire. Endless runs with a persistent hi-score. It's close to the original in spirit and mechanics, but not a pixel-perfect replica.",
       "gameFile": "star-trek.html",
       "screenshot": "star-trek.png"
-    },
-    {
-      "title": "Alpine Rush",
-      "company": "Original",
-      "year": "2026",
-      "description": "A 3D downhill ski arcade rendered in real-time with Three.js. Carve down an endless powder slope, steering between pines and boulders while grabbing flags for points. Jump to clear rocks, tuck to hit top speed, and survive as the pace ramps up. Three lives, escalating speed, and a persistent hi-score. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
-      "gameFile": "skiing.html",
-      "screenshot": "skiing.png"
     }
   ]
 }
