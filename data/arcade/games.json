@@ -1,6 +1,6 @@
 {
   "title": "One-Page Arcade",
-  "description": "Classic arcade games and original 3D titles, rebuilt as single-file HTML — playable in your browser.",
+  "description": "Classic arcade games and original 3D titles, rebuilt as single-file HTML \u2014 playable in your browser.",
   "games": [
     {
       "title": "Asteroids",
@@ -113,6 +113,14 @@
       "description": "A 3D downhill ski arcade rendered in real-time with Three.js. Carve down an endless powder slope, steering between pines and boulders while grabbing flags for points. Jump to clear rocks, tuck to hit top speed, and survive as the pace ramps up. Three lives, escalating speed, and a persistent hi-score. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
       "gameFile": "skiing.html",
       "screenshot": "skiing.png"
+    },
+    {
+      "title": "Battlezone",
+      "company": "Atari",
+      "year": "1990",
+      "description": "A 3D polygon tank battle rendered in real-time with Three.js \u2014 a rebuild of the 1990 Atari arcade classic, the first true 3D polygon arcade game. Drive your tank across a dark wireframe wasteland, swing the turret with the mouse, and blast waves of enemy tanks: fast scouts, tough standards, and armored heavies. Rocks and ruined buildings block line of fire. Three lives, escalating waves, and a persistent hi-score. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
+      "gameFile": "battlezone.html",
+      "screenshot": "battlezone.png"
     }
   ]
 }
