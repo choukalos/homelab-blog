@@ -35,5 +35,6 @@ Every game follows the same structure (see the arcade's `ARCHITECTURE.md` in the
 | Star Trek | GT Interactive (Vectrex) | 1983 |
 | Zombie City: Last Stand | Original | 2025 |
 | Alpine Rush | Original | 2026 |
+| Battlezone | Atari | 1990 |
 
-The two **Original** titles are real-time 3D (Three.js inlined in the file); the rest are 2D canvas builds. More games will be added over time — the index is data-driven, so a new game is one HTML file plus one JSON entry.
+The **Original** titles are real-time 3D (Three.js inlined in the file); Battlezone is a 3D polygon rebuild of the 1990 Atari arcade classic; the rest are 2D canvas builds. More games will be added over time — the index is data-driven, so a new game is one HTML file plus one JSON entry.
