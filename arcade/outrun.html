@@ -243,7 +243,8 @@ function buildRoad(){
     roadSegLen.push(len);
     const head = Math.atan2(dx, dz);
     roadHead.push(head);
-    roadRight.push({ x: Math.cos(head), z: -Math.sin(head) });
+    // driver's RIGHT = forward x up = (-cos h, 0, sin h) for forward (sin h, 0, cos h)
+    roadRight.push({ x: -Math.cos(head), z: Math.sin(head) });
   }
   for (let i = 0; i < ROAD_N; i++){
     const nh = roadHead[(i + 1) % ROAD_N], h = roadHead[i];
@@ -591,7 +592,7 @@ function update(){
   car.playerX += steer * P_STEER * DT;
 
   const ra = roadAt(car.pos);
-  car.playerX -= ra.curv * car.speed * P_CENTRI * DT;   // centrifugal drift
+  car.playerX += ra.curv * car.speed * P_CENTRI * DT;   // centrifugal drift (pushes outward in curves)
   car.playerX = C(car.playerX, -1.5, 1.5);
 
   // off-road: heavy slow + speed cap + shake
@@ -700,7 +701,7 @@ function draw(){
 
   // ---- player car ----
   const ra = roadAt(car.pos);
-  const rx = Math.cos(ra.head), rz = -Math.sin(ra.head);
+  const rx = -Math.cos(ra.head), rz = Math.sin(ra.head);   // driver's right vector
   const px = ra.x + rx * car.playerX * ROAD_HALF_W;
   const pz = ra.z + rz * car.playerX * ROAD_HALF_W;
   playerCar.position.set(px, ra.y, pz);
@@ -711,7 +712,8 @@ function draw(){
   for (let i = 0; i < traffic.length; i++){
     const tf = traffic[i];
     const tr = roadAt(tf.pos);
-    const trx = Math.cos(tr.head), trz = -Math.sin(tr.head);
+    const trx = -Math.cos(tr.head), trz = Math.sin(tr.head);   // driver's right vector
+    tf.mesh.visible = state !== ST.TITLE;   // hidden on title (cars stack at pos 0 until initTraffic)
     tf.mesh.position.set(tr.x + trx * tf.playerX * ROAD_HALF_W, tr.y, tr.z + trz * tf.playerX * ROAD_HALF_W);
     tf.mesh.rotation.y = tr.head;
   }
