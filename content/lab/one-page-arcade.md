@@ -29,6 +29,11 @@ Every game follows the same structure (see the arcade's `ARCHITECTURE.md` in the
 | Tetris | Electronorgtechnika | 1984 |
 | Lunar Lander | Atari | 1979 |
 | Pitfall! | Atari | 1982 |
+| Kung Fu Master | Irem | 1984 |
+| Double Dragon | Technos | 1987 |
+| Star Wars | Midway | 1983 |
+| Star Trek | GT Interactive (Vectrex) | 1983 |
 | Zombie City: Last Stand | Original | 2025 |
+| Alpine Rush | Original | 2026 |
 
-More games will be added over time — the index is data-driven, so a new game is one HTML file plus one JSON entry.
+The two **Original** titles are real-time 3D (Three.js inlined in the file); the rest are 2D canvas builds. More games will be added over time — the index is data-driven, so a new game is one HTML file plus one JSON entry.
