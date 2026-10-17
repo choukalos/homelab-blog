@@ -27,14 +27,6 @@
       "screenshot": "depth-charge.png"
     },
     {
-      "title": "Elite",
-      "company": "Firelight/Lucid Dreams",
-      "year": "1984",
-      "description": "The groundbreaking space trading and combat sim that pioneered the open-ended sandbox genre. Created by Ian Bell and David Braben, Elite let players explore a procedurally generated galaxy of 8 galaxies and 256 star systems, trading goods, bounty hunting, and engaging in 3D wireframe dogfights. It won over 50 computer game awards and is widely considered one of the most important games ever made.",
-      "gameFile": "elite.html",
-      "screenshot": "elite.png"
-    },
-    {
       "title": "Missile Command",
       "company": "Atari",
       "year": "1980",
@@ -121,6 +113,14 @@
       "description": "A 3D polygon tank battle rendered in real-time with Three.js \u2014 a rebuild of the 1990 Atari arcade classic, the first true 3D polygon arcade game. Drive your tank across a dark wireframe wasteland, swing the turret with the mouse, and blast waves of enemy tanks: fast scouts, tough standards, and armored heavies. Rocks and ruined buildings block line of fire. Three lives, escalating waves, and a persistent hi-score. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
       "gameFile": "battlezone.html",
       "screenshot": "battlezone.png"
+    },
+    {
+      "title": "Elite",
+      "company": "Firelight/Lucid Dreams",
+      "year": "1984",
+      "description": "A 3D space-combat rebuild of the 1984 Firelight/Lucid Dreams classic that pioneered the open-ended sandbox genre, rendered in real-time with Three.js. Pilot your ship through a starfield with full 3D flight \u2014 independent pitch, yaw and roll, thrust-and-coast physics \u2014 while pirate fighters, cruisers and bombers hunt you down. Take hull damage, dodge or destroy your attackers, and reach the rotating docking station to win. Lose your hull and it's game over. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
+      "gameFile": "elite.html",
+      "screenshot": "elite.png"
     }
   ]
 }
