@@ -121,6 +121,14 @@
       "description": "A 3D space-combat rebuild of the 1984 Firelight/Lucid Dreams classic that pioneered the open-ended sandbox genre, rendered in real-time with Three.js. Pilot your ship through a starfield with full 3D flight \u2014 independent pitch, yaw and roll, thrust-and-coast physics \u2014 while pirate fighters, cruisers and bombers hunt you down. Take hull damage, dodge or destroy your attackers, and reach the rotating docking station to win. Lose your hull and it's game over. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
       "gameFile": "elite.html",
       "screenshot": "elite.png"
+    },
+    {
+      "title": "OutRun",
+      "company": "Sega",
+      "year": "1986",
+      "description": "A synthwave pseudo-3D driving game rendered in real-time with inlined Three.js \u2014 a rebuild of the 1986 Sega arcade classic. Pilot a low-poly sports car around a neon sunset circuit, dodging 14 traffic cars and shaving close past them for bonus points while curves and hills push you around. Beat the 75-second timer to the finish line to win \u2014 collisions slow you down hard, and the hi-score is saved in localStorage. Fully self-contained in a single HTML file with inlined Three.js and procedural WebAudio sound.",
+      "gameFile": "outrun.html",
+      "screenshot": "outrun.png"
     }
   ]
 }
