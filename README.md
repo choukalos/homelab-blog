@@ -47,11 +47,16 @@ The server never runs a build: it receives only finished HTML/CSS/JS.
 Skills Runner publish_file() (or a manual copy) → public drop dir → live under /files/
 ```
 
+## Requirements
+
+- **Hugo ≥ v0.168.0 (extended)** on the laptop — the only build machine. v0.168.0 (2026-10-13) fixes GHSA-r73q-gwx2-fpxm (theme `module.replacements` mount-sandbox bypass) and is current as of this note. Check `hugo version` and the [Hugo security advisories](https://github.com/gohugoio/hugo/security/advisories) before building.
+
 ## Owner quickstart
 
 | Task | How |
 |---|---|
 | Write a post | `scripts/new-thought.sh "my-post"` → edit the created file → `hugo server` to preview |
+| Update Hugo | download the latest `hugo_extended_*_darwin-universal.pkg` from the [releases](https://github.com/gohugoio/hugo/releases), verify the SHA256 against `hugo_*_checksums.txt`, and replace `~/bin/hugo` (the laptop is the only build machine) |
 | Preview locally | `hugo server` → http://localhost:1313 |
 | Publish a page | `git push` to `main`, then `./deploy.sh` |
 | Publish a file | `publish_file` skill on the server (returns the public URL) |
